@@ -80,3 +80,67 @@ export function generateBboxCacheKey(bbox: { north: number; south: number; east:
   
   return `waterways:${rounded.south},${rounded.west},${rounded.north},${rounded.east}`;
 }
+
+// Enhanced cache utilities for historical data
+export async function cacheGetMultiple(keys: string[]): Promise<{ [key: string]: any }> {
+  try {
+    const client = await getRedisClient();
+    if (!client || keys.length === 0) return {};
+    
+    const values = await client.mGet(keys);
+    const result: { [key: string]: any } = {};
+    
+    keys.forEach((key, index) => {
+      if (values[index]) {
+        try {
+          result[key] = JSON.parse(values[index]);
+        } catch (error) {
+          console.warn(`Failed to parse cached value for key ${key}:`, error);
+        }
+      }
+    });
+    
+    return result;
+  } catch (error) {
+    console.warn('Redis mGet error:', error);
+    return {};
+  }
+}
+
+export async function cacheSetMultiple(keyValuePairs: { [key: string]: any }, ttlSeconds: number = 3600): Promise<boolean> {
+  try {
+    const client = await getRedisClient();
+    if (!client) return false;
+    
+    const pipeline = client.multi();
+    
+    Object.entries(keyValuePairs).forEach(([key, value]) => {
+      pipeline.setEx(key, ttlSeconds, JSON.stringify(value));
+    });
+    
+    await pipeline.exec();
+    return true;
+  } catch (error) {
+    console.warn('Redis mSet error:', error);
+    return false;
+  }
+}
+
+// Generate cache key for historical gauge data
+export function generateHistoricalDataKey(siteId: string, hours: number): string {
+  return `gauge_historical:${siteId}:${hours}h`;
+}
+
+// Generate cache key for site metadata
+export function generateSiteMetadataKey(siteId: string): string {
+  return `gauge_metadata:${siteId}`;
+}
+
+// Cache configuration constants
+export const CACHE_TTL = {
+  WATERWAYS: 24 * 60 * 60, // 24 hours - waterways change rarely
+  USGS_CURRENT: 15 * 60,   // 15 minutes - current conditions
+  HISTORICAL_DATA: 60 * 60, // 1 hour - historical data
+  SITE_METADATA: 24 * 60 * 60, // 24 hours - site info rarely changes
+  FLOOD_STAGES: 7 * 24 * 60 * 60 // 7 days - flood stage data
+};

@@ -11,6 +11,7 @@ import MapChartOverlay from './MapChartOverlay';
 import WaterwayLayer from './WaterwayLayer';
 import FloodAwareWaterwayLayer from './FloodAwareWaterwayLayer';
 import FloodPredictionPanel from './FloodPredictionPanel';
+import DraggableBox from './DraggableBox';
 
 // Fix for default markers in react-leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -217,12 +218,19 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
   const [gaugeSitesVisible, setGaugeSitesVisible] = useState(true);
   const [floodAwarenessEnabled, setFloodAwarenessEnabled] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
+  const [controlsPosition, setControlsPosition] = useState({ x: 0, y: 16 });
   const mapRef = useRef<any>(null);
 
-  // Mobile detection
+  // Mobile detection and controls positioning
   useEffect(() => {
     const checkMobile = () => {
-      setIsMobile(window.innerWidth < 768);
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      // Position controls on the right side, accounting for screen width
+      setControlsPosition({ 
+        x: Math.max(window.innerWidth - 320, 16), 
+        y: 16 
+      });
     };
     
     checkMobile();
@@ -323,72 +331,78 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
 
   return (
     <div className="relative h-full w-full">
-      {/* Global Trend Length Dropdown */}
-      <div className="absolute top-4 right-4 z-[1002] bg-white rounded-lg shadow-lg border p-3 space-y-3">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Chart Time Range
-          </label>
-          <select
-            className="border rounded px-2 py-1 text-sm bg-white text-gray-700 w-full"
-            value={globalTrendHours}
-            onChange={e => onTrendHoursChange(Number(e.target.value))}
-          >
-            <option value={1}>1 hour</option>
-            <option value={8}>8 hours</option>
-            <option value={24}>24 hours</option>
-            <option value={48}>48 hours</option>
-          </select>
+      {/* Chart Time Range and Controls - Now Draggable */}
+      <DraggableBox
+        id="chart-controls"
+        title="Chart Time Range & Controls"
+        initialPosition={controlsPosition}
+      >
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Chart Time Range
+            </label>
+            <select
+              className="border rounded px-2 py-1 text-sm bg-white text-gray-700 w-full"
+              value={globalTrendHours}
+              onChange={e => onTrendHoursChange(Number(e.target.value))}
+            >
+              <option value={1}>1 hour</option>
+              <option value={8}>8 hours</option>
+              <option value={24}>24 hours</option>
+              <option value={48}>48 hours</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="flex items-center space-x-2 text-sm">
+              <input
+                type="checkbox"
+                checked={gaugeSitesVisible}
+                onChange={e => setGaugeSitesVisible(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-gray-700">Show Gauge Sites</span>
+            </label>
+          </div>
+          
+          <div>
+            <label className="flex items-center space-x-2 text-sm">
+              <input
+                type="checkbox"
+                checked={chartsVisible}
+                onChange={e => setChartsVisible(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-gray-700">Show Charts & Arrows</span>
+            </label>
+          </div>
+          
+          <div>
+            <label className="flex items-center space-x-2 text-sm">
+              <input
+                type="checkbox"
+                checked={waterwaysVisible}
+                onChange={e => setWaterwaysVisible(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-gray-700">Show Major Rivers</span>
+            </label>
+          </div>
+          
+          <div>
+            <label className="flex items-center space-x-2 text-sm">
+              <input
+                type="checkbox"
+                checked={floodAwarenessEnabled}
+                onChange={e => setFloodAwarenessEnabled(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-gray-700">🌊 Flood Awareness Mode</span>
+            </label>
+          </div>
         </div>
-        
-        <div>
-          <label className="flex items-center space-x-2 text-sm">
-            <input
-              type="checkbox"
-              checked={gaugeSitesVisible}
-              onChange={e => setGaugeSitesVisible(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-gray-700">Show Gauge Sites</span>
-          </label>
-        </div>
-        
-        <div>
-          <label className="flex items-center space-x-2 text-sm">
-            <input
-              type="checkbox"
-              checked={chartsVisible}
-              onChange={e => setChartsVisible(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-gray-700">Show Charts & Arrows</span>
-          </label>
-        </div>
-        
-        <div>
-          <label className="flex items-center space-x-2 text-sm">
-            <input
-              type="checkbox"
-              checked={waterwaysVisible}
-              onChange={e => setWaterwaysVisible(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-gray-700">Show Major Rivers</span>
-          </label>
-        </div>
-        
-        <div>
-          <label className="flex items-center space-x-2 text-sm">
-            <input
-              type="checkbox"
-              checked={floodAwarenessEnabled}
-              onChange={e => setFloodAwarenessEnabled(e.target.checked)}
-              className="rounded"
-            />
-            <span className="text-gray-700">🌊 Flood Awareness Mode</span>
-          </label>
-        </div>
-      </div>
+      </DraggableBox>
       
       <MapContainer
         center={defaultCenter}
@@ -471,12 +485,11 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                     <div className="text-xs font-semibold text-gray-600 mb-1">
                       Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level
                     </div>
-                    <div className="h-24">
-                      <WaterLevelChart 
-                        data={site.chartData} 
-                        color={getChartColor(site.waterLevelStatus || 'unknown')}
-                      />
-                    </div>
+                    <WaterLevelChart 
+                      data={site.chartData} 
+                      color={getChartColor(site.waterLevelStatus || 'unknown')}
+                      height={96}
+                    />
                   </div>
                 )}
                 <div className="mt-2 pt-1 border-t border-gray-200 text-xs">
@@ -534,6 +547,8 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                     <WaterLevelChart 
                       data={site.chartData} 
                       color={getChartColor(site.waterLevelStatus || 'unknown')}
+                      showTooltip={true}
+                      height={120}
                     />
                   </div>
                 )}

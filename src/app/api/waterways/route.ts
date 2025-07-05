@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
-import { cacheGet, cacheSet, generateBboxCacheKey } from '@/lib/redis';
+import { cacheGet, cacheSet, generateBboxCacheKey, CACHE_TTL } from '@/lib/redis';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
@@ -94,9 +94,9 @@ export async function GET(request: NextRequest) {
         return isMajorRiver;
       });
 
-    // Cache the results for 24 hours (86400 seconds)
+    // Cache the results for 24 hours
     console.log('Caching waterways:', waterways.length, 'waterways for key:', cacheKey);
-    await cacheSet(cacheKey, waterways, 86400);
+    await cacheSet(cacheKey, waterways, CACHE_TTL.WATERWAYS);
 
     return NextResponse.json({ waterways, cached: false }, {
       headers: {

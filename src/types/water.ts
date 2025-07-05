@@ -13,6 +13,9 @@ export interface WaterSite {
     value: number;
   }>;
   floodStage?: number;
+  moderateFloodStage?: number;
+  majorFloodStage?: number;
+  actionStage?: number;
   recordStage?: number;
 }
 
