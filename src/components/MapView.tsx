@@ -9,6 +9,8 @@ import { Waterway } from '@/services/waterways';
 import WaterLevelChart from './WaterLevelChart';
 import MapChartOverlay from './MapChartOverlay';
 import WaterwayLayer from './WaterwayLayer';
+import FloodAwareWaterwayLayer from './FloodAwareWaterwayLayer';
+import FloodPredictionPanel from './FloodPredictionPanel';
 
 // Fix for default markers in react-leaflet
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -23,6 +25,7 @@ interface MapViewProps {
   waterways: Waterway[];
   globalTrendHours: number;
   onTrendHoursChange: (hours: number) => void;
+  onVisibilityStatsChange?: (stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => void;
 }
 
 // Component to handle map events and overlay positioning
@@ -205,13 +208,28 @@ const createCustomIcon = (status: string) => {
 };
 
 
-const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, onTrendHoursChange }) => {
+const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, onTrendHoursChange, onVisibilityStatsChange }) => {
   const defaultCenter: [number, number] = [30.6327, -97.6769]; // Georgetown, TX
   const defaultZoom = 11;
   const [visibleSites, setVisibleSites] = useState<WaterSite[]>(sites);
   const [chartsVisible, setChartsVisible] = useState(false);
   const [waterwaysVisible, setWaterwaysVisible] = useState(true);
+  const [gaugeSitesVisible, setGaugeSitesVisible] = useState(true);
+  const [floodAwarenessEnabled, setFloodAwarenessEnabled] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const mapRef = useRef<any>(null);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Austin-based filtering constants
   const AUSTIN_LAT = 30.2672;
@@ -252,13 +270,33 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
       );
       console.log(`Total sites: ${sites.length}, Within 100mi of Austin: ${sites.filter(site => haversine(AUSTIN_LAT, AUSTIN_LON, site.latitude, site.longitude) <= RADIUS_MILES).length}, Visible: ${filteredSites.length}`);
       setVisibleSites(filteredSites);
+      
+      // Update visibility stats
+      if (onVisibilityStatsChange) {
+        onVisibilityStatsChange({
+          totalSites: sites.length,
+          visibleSites: filteredSites.length,
+          gaugeSitesVisible
+        });
+      }
     };
     map.on('moveend zoomend', updateVisibleSites);
     updateVisibleSites();
     return () => {
       map.off('moveend zoomend', updateVisibleSites);
     };
-  }, [sites]);
+  }, [sites, gaugeSitesVisible, onVisibilityStatsChange]);
+
+  // Update visibility stats when gauge sites visibility changes
+  useEffect(() => {
+    if (onVisibilityStatsChange) {
+      onVisibilityStatsChange({
+        totalSites: sites.length,
+        visibleSites: visibleSites.length,
+        gaugeSitesVisible
+      });
+    }
+  }, [gaugeSitesVisible, onVisibilityStatsChange, sites.length, visibleSites.length]);
 
   // Utility functions (unchanged)
   const formatLastUpdated = (dateString?: string) => {
@@ -307,6 +345,18 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
           <label className="flex items-center space-x-2 text-sm">
             <input
               type="checkbox"
+              checked={gaugeSitesVisible}
+              onChange={e => setGaugeSitesVisible(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-gray-700">Show Gauge Sites</span>
+          </label>
+        </div>
+        
+        <div>
+          <label className="flex items-center space-x-2 text-sm">
+            <input
+              type="checkbox"
               checked={chartsVisible}
               onChange={e => setChartsVisible(e.target.checked)}
               className="rounded"
@@ -324,6 +374,18 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
               className="rounded"
             />
             <span className="text-gray-700">Show Major Rivers</span>
+          </label>
+        </div>
+        
+        <div>
+          <label className="flex items-center space-x-2 text-sm">
+            <input
+              type="checkbox"
+              checked={floodAwarenessEnabled}
+              onChange={e => setFloodAwarenessEnabled(e.target.checked)}
+              className="rounded"
+            />
+            <span className="text-gray-700">🌊 Flood Awareness Mode</span>
           </label>
         </div>
       </div>
@@ -353,24 +415,75 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
           maxZoom={19}
           tileSize={256}
         />
-        <WaterwayLayer waterways={waterwaysVisible ? waterways : []} />
-        {visibleSites.map((site) => (
+        <FloodAwareWaterwayLayer 
+          waterways={waterwaysVisible ? waterways : []} 
+          gaugeSites={sites}
+          enabled={floodAwarenessEnabled}
+        />
+        {gaugeSitesVisible && visibleSites.map((site) => (
           <Marker
             key={site.id}
             position={[site.latitude, site.longitude]}
             icon={createCustomIcon(site.waterLevelStatus || 'unknown')}
           >
-            <Tooltip direction="top" offset={[0, -20]} opacity={0.9}>
-              <div className="text-sm">
-                <div className="font-semibold">{site.name}</div>
-                <div>Level: {site.waterLevel ? `${site.waterLevel.toFixed(1)} ft` : 'No data'}</div>
-                <div>Status: <span className={`font-medium ${
-                  site.waterLevelStatus === 'high' ? 'text-red-600' :
-                  site.waterLevelStatus === 'normal' ? 'text-green-600' :
-                  site.waterLevelStatus === 'low' ? 'text-yellow-600' : 'text-gray-600'
-                }`}>
-                  {site.waterLevelStatus?.toUpperCase() || 'UNKNOWN'}
-                </span></div>
+            <Tooltip direction="top" offset={[0, -20]} opacity={0.9} className="custom-tooltip">
+              <div className="p-2 max-w-xs">
+                <h3 className="font-bold text-base mb-2">{site.name}</h3>
+                <div className="space-y-1 text-xs">
+                  <div>
+                    <strong>Site ID:</strong> {site.id}
+                  </div>
+                  <div>
+                    <strong>Status:</strong>{' '}
+                    <span
+                      className={`inline-block px-1 py-0.5 rounded text-xs text-white ${
+                        site.waterLevelStatus === 'high'
+                          ? 'bg-red-600'
+                          : site.waterLevelStatus === 'normal'
+                          ? 'bg-green-600'
+                          : site.waterLevelStatus === 'low'
+                          ? 'bg-yellow-600'
+                          : 'bg-gray-600'
+                      }`}
+                    >
+                      {site.waterLevelStatus?.toUpperCase() || 'UNKNOWN'}
+                    </span>
+                  </div>
+                  {site.gageHeight && (
+                    <div>
+                      <strong>Gage Height:</strong> {formatWaterLevel(site.gageHeight)}
+                    </div>
+                  )}
+                  {site.streamflow && (
+                    <div>
+                      <strong>Streamflow:</strong> {formatWaterLevel(site.streamflow, 'cfs')}
+                    </div>
+                  )}
+                  <div>
+                    <strong>Coordinates:</strong> {site.latitude.toFixed(4)}, {site.longitude.toFixed(4)}
+                  </div>
+                  <div>
+                    <strong>Last Updated:</strong> {formatLastUpdated(site.lastUpdated)}
+                  </div>
+                </div>
+                {site.chartData && site.chartData.length > 0 && (
+                  <div className="mt-2 pt-2 border-t border-gray-200">
+                    <div className="text-xs font-semibold text-gray-600 mb-1">
+                      Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level
+                    </div>
+                    <div className="h-24">
+                      <WaterLevelChart 
+                        data={site.chartData} 
+                        color={getChartColor(site.waterLevelStatus || 'unknown')}
+                      />
+                    </div>
+                  </div>
+                )}
+                <div className="mt-2 pt-1 border-t border-gray-200 text-xs">
+                  <span className="text-blue-600">
+                    Click for detailed view • View on USGS
+                  </span>
+                </div>
               </div>
             </Tooltip>
             <Popup className="custom-popup">
@@ -438,8 +551,14 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
             </Popup>
           </Marker>
         ))}
-        <MapOverlayHandler sites={visibleSites} globalTrendHours={globalTrendHours} chartsVisible={chartsVisible} />
+        <MapOverlayHandler sites={gaugeSitesVisible ? visibleSites : []} globalTrendHours={globalTrendHours} chartsVisible={chartsVisible} />
       </MapContainer>
+      
+      <FloodPredictionPanel 
+        gaugeSites={sites}
+        waterways={waterways}
+        enabled={floodAwarenessEnabled}
+      />
     </div>
   );
 };

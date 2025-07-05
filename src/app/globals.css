@@ -21,6 +21,50 @@
   max-width: 300px;
 }
 
+.custom-tooltip {
+  max-width: 280px !important;
+}
+
+.custom-tooltip .leaflet-tooltip-content {
+  padding: 0 !important;
+  margin: 0 !important;
+  background: white !important;
+  border: 1px solid #ccc !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+}
+
+/* Mobile optimizations for popups */
+@media (max-width: 768px) {
+  .custom-popup {
+    max-width: 280px;
+    font-size: 14px;
+  }
+  
+  .leaflet-popup-content-wrapper {
+    padding: 8px;
+  }
+  
+  .leaflet-popup-content {
+    margin: 8px 12px;
+    line-height: 1.4;
+  }
+  
+  /* Make map controls more touch-friendly */
+  .leaflet-control-zoom a {
+    width: 32px !important;
+    height: 32px !important;
+    line-height: 32px !important;
+    font-size: 18px !important;
+  }
+  
+  /* Improve attribution for mobile */
+  .leaflet-control-attribution {
+    font-size: 10px !important;
+    background: rgba(255, 255, 255, 0.8) !important;
+  }
+}
+
 .custom-marker {
   background: transparent !important;
   border: none !important;
@@ -40,4 +84,37 @@
 
 .water-level-unknown {
   background-color: #6b7280;
+}
+
+/* Mobile responsive utilities */
+@media (max-width: 768px) {
+  /* Touch-friendly buttons */
+  .mobile-touch-target {
+    min-height: 44px;
+    min-width: 44px;
+  }
+  
+  /* Prevent zoom on input focus */
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+  
+  /* Hide desktop-only elements */
+  .desktop-only {
+    display: none !important;
+  }
+  
+  /* Mobile-specific layouts */
+  .mobile-stack {
+    flex-direction: column !important;
+  }
+  
+  .mobile-full-width {
+    width: 100% !important;
+  }
 }
