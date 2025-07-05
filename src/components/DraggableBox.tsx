@@ -47,8 +47,22 @@ const DraggableBox: React.FC<DraggableBoxProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     console.log('DraggableBox handleMouseDown called', { id, target: e.target, title });
+    
     // Only start dragging if clicking on the title bar or if no title
     const target = e.target as HTMLElement;
+    
+    // Don't drag if user is interacting with form controls
+    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'BUTTON' || target.tagName === 'LABEL') {
+      console.log('Click on form element, not dragging');
+      return;
+    }
+    
+    // Don't drag if clicking inside form controls
+    if (target.closest('input') || target.closest('select') || target.closest('button') || target.closest('label')) {
+      console.log('Click inside form element, not dragging');
+      return;
+    }
+    
     if (title && !target.classList.contains('drag-handle') && !target.closest('.drag-handle')) {
       console.log('Click not on drag handle, returning');
       return;
@@ -128,16 +142,16 @@ const DraggableBox: React.FC<DraggableBoxProps> = ({
     >
       {title && (
         <div
-          className="drag-handle px-3 py-2 bg-gray-50 rounded-t-lg border-b border-gray-200 cursor-grab active:cursor-grabbing select-none"
+          className="drag-handle px-3 py-2 bg-gray-100 rounded-t-lg border-b border-gray-200 cursor-grab active:cursor-grabbing select-none hover:bg-gray-200"
           onMouseDown={handleMouseDown}
           style={{ pointerEvents: 'auto' }} // Ensure the handle is clickable
         >
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700 pointer-events-none">{title}</span>
             <div className="flex space-x-1 pointer-events-none">
-              <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-              <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
-              <div className="w-2 h-2 bg-gray-300 rounded-full"></div>
+              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useRef } from 'react';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import { WaterSite } from '@/types/water';
 
@@ -14,9 +14,6 @@ interface MapChartOverlayProps {
 }
 
 const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gaugePosition, index, totalSites, globalTrendHours }) => {
-  const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
-  const dragStartPos = useRef({ x: 0, y: 0, chartX: 0, chartY: 0 });
   const chartRef = useRef<HTMLDivElement>(null);
 
   if (!site.chartData || site.chartData.length === 0) {
@@ -54,9 +51,9 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
 
   const { offsetX, offsetY } = calculateOffset();
   
-  // Final position including drag offset
-  const finalX = position.x + offsetX + dragOffset.x;
-  const finalY = position.y + offsetY + dragOffset.y;
+  // Final position (charts are not draggable)
+  const finalX = position.x + offsetX;
+  const finalY = position.y + offsetY;
   
   // Calculate arrow direction from chart to the EXACT gauge position
   const arrowDeltaX = gaugePosition.x - finalX;
@@ -64,10 +61,6 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
   const arrowAngle = Math.atan2(arrowDeltaY, arrowDeltaX) * (180 / Math.PI);
   const arrowLength = Math.sqrt(arrowDeltaX ** 2 + arrowDeltaY ** 2);
   
-  // Calculate the exact gauge position relative to chart
-  const gaugeRelativeX = gaugePosition.x - finalX;
-  const gaugeRelativeY = gaugePosition.y - finalY;
-
   // Offset the arrow head so it doesn't cover the gauge dot
   const arrowHeadOffset = 12; // px
   let arrowEndX = gaugePosition.x;
@@ -77,50 +70,6 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
     arrowEndX = finalX + ((gaugePosition.x - finalX) * (norm - arrowHeadOffset)) / norm;
     arrowEndY = finalY + ((gaugePosition.y - finalY) * (norm - arrowHeadOffset)) / norm;
   }
-
-  // Mouse event handlers for dragging
-  const handleMouseDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDragging(true);
-    dragStartPos.current = {
-      x: e.clientX,
-      y: e.clientY,
-      chartX: dragOffset.x,
-      chartY: dragOffset.y
-    };
-  };
-
-  const handleMouseMove = (e: MouseEvent) => {
-    if (!isDragging) return;
-    
-    const deltaX = e.clientX - dragStartPos.current.x;
-    const deltaY = e.clientY - dragStartPos.current.y;
-    
-    setDragOffset({
-      x: dragStartPos.current.chartX + deltaX,
-      y: dragStartPos.current.chartY + deltaY
-    });
-  };
-
-  const handleMouseUp = () => {
-    setIsDragging(false);
-  };
-
-  // Add global mouse event listeners for dragging
-  React.useEffect(() => {
-    if (isDragging) {
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-      document.body.style.cursor = 'grabbing';
-      
-      return () => {
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-        document.body.style.cursor = '';
-      };
-    }
-  }, [isDragging]);
 
   const getChartColor = (status: string) => {
     switch (status) {
@@ -209,12 +158,11 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
         }}
       >
         <div
-          className={`bg-white rounded-lg shadow-lg border-2 p-2 pointer-events-auto relative z-30 ${getStatusBgColor(site.waterLevelStatus || 'unknown')} ${isDragging ? 'cursor-grabbing' : 'cursor-grab'} select-none`}
+          className={`bg-white rounded-lg shadow-lg border-2 p-2 pointer-events-auto relative z-30 ${getStatusBgColor(site.waterLevelStatus || 'unknown')} select-none`}
           style={{
             width: '320px',
             fontSize: '14px',
           }}
-          onMouseDown={handleMouseDown}
         >
           {/* Site Info Header */}
           <div className="font-semibold text-gray-800 mb-1 truncate leading-tight">
