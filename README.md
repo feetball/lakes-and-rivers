@@ -52,19 +52,19 @@ Visit http://localhost:3000
 #### Manual deployment
 ```bash
 # Build and start all services
-docker-compose up -d
+docker compose up -d
 
 # Check service status
-docker-compose ps
+docker compose ps
 
 # View logs
-docker-compose logs -f app
+docker compose logs -f app
 ```
 
 #### Development with Docker
 ```bash
 # Start development environment
-docker-compose -f docker-compose.dev.yml up
+docker compose -f docker-compose.dev.yml up
 
 # Or build and run dev container only
 docker build -f Dockerfile.dev -t lakes-rivers-dev .

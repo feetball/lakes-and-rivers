@@ -14,7 +14,12 @@ const DynamicMap = dynamic(() => import('../components/MapView'), {
       <div className="text-lg">Loading map...</div>
     </div>
   ),
-}) as React.ComponentType<{ sites: WaterSite[]; waterways: Waterway[] }>;
+}) as React.ComponentType<{ 
+  sites: WaterSite[]; 
+  waterways: Waterway[];
+  globalTrendHours: number;
+  onTrendHoursChange: (hours: number) => void;
+}>;
 
 export default function WaterMap() {
   const [sites, setSites] = useState<WaterSite[]>([]);
@@ -22,11 +27,12 @@ export default function WaterMap() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedState, setSelectedState] = useState('');
+  const [globalTrendHours, setGlobalTrendHours] = useState(24);
 
   useEffect(() => {
     loadWaterSites();
     loadWaterways();
-  }, []);
+  }, [globalTrendHours]); // Reload when time range changes
 
   const loadWaterways = async () => {
     try {
@@ -66,18 +72,19 @@ export default function WaterMap() {
       
       console.log('Loading water sites for 100-mile radius around Austin with bbox:', bbox);
       
-      const waterSites = await USGSService.getWaterSites(bbox);
+      const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);
       
       console.log('Received sites:', waterSites);
       
       // If no sites found, add some test sites for demonstration
       if (waterSites.length === 0) {
         console.log('No USGS sites found, adding test sites');
-        // Generate sample chart data for the last 8 hours
+        // Generate sample chart data for the specified hours
         const generateSampleChartData = (baseLevel: number) => {
           const data = [];
           const now = Date.now();
-          for (let i = 47; i >= 0; i--) {
+          const totalPoints = Math.max(globalTrendHours * 6, 6); // 6 points per hour (10-minute intervals)
+          for (let i = totalPoints - 1; i >= 0; i--) {
             data.push({
               time: now - (i * 10 * 60 * 1000), // 10-minute intervals
               value: baseLevel + (Math.random() - 0.5) * 0.5 // Small random variation
@@ -160,7 +167,8 @@ export default function WaterMap() {
       const generateSampleChartData = (baseLevel: number) => {
         const data = [];
         const now = Date.now();
-        for (let i = 47; i >= 0; i--) {
+        const totalPoints = Math.max(globalTrendHours * 6, 6); // 6 points per hour (10-minute intervals)
+        for (let i = totalPoints - 1; i >= 0; i--) {
           data.push({
             time: now - (i * 10 * 60 * 1000), // 10-minute intervals
             value: baseLevel + (Math.random() - 0.5) * 0.5 // Small random variation
@@ -190,6 +198,10 @@ export default function WaterMap() {
   const handleStateChange = async (state: string) => {
     setSelectedState(state);
     // You could implement state-specific loading here
+  };
+
+  const handleTrendHoursChange = (hours: number) => {
+    setGlobalTrendHours(hours);
   };
 
   if (loading) {
@@ -272,7 +284,12 @@ export default function WaterMap() {
 
       {/* Map */}
       <div className="pt-16 h-full">
-        <DynamicMap sites={sites} waterways={waterways} />
+        <DynamicMap 
+          sites={sites} 
+          waterways={waterways} 
+          globalTrendHours={globalTrendHours}
+          onTrendHoursChange={handleTrendHoursChange}
+        />
       </div>
     </div>
   );

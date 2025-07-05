@@ -1,1 +1,5 @@
-{}
+{
+  "/api/waterways/route": "app/api/waterways/route.js",
+  "/api/usgs/route": "app/api/usgs/route.js",
+  "/page": "app/page.js"
+}

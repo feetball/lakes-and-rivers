@@ -12,8 +12,8 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null; then
-    echo "❌ Docker Compose is not installed. Please install Docker Compose first."
+if ! docker compose version &> /dev/null; then
+    echo "❌ Docker Compose is not available. Please ensure Docker Compose is installed."
     exit 1
 fi
 
@@ -35,23 +35,23 @@ EOF
 fi
 
 echo "🏗️  Building Docker images..."
-docker-compose build --no-cache
+docker compose build --no-cache
 
 echo "🛑 Stopping existing containers..."
-docker-compose down
+docker compose down
 
 echo "🧹 Cleaning up old images and volumes..."
 docker system prune -f
 docker volume prune -f
 
 echo "🚀 Starting services..."
-docker-compose up -d
+docker compose up -d
 
 echo "⏳ Waiting for services to be healthy..."
 sleep 10
 
 # Check if services are running
-if docker-compose ps | grep -q "Up"; then
+if docker compose ps | grep -q "Up"; then
     echo "✅ Services are running!"
     
     # Test health endpoint
@@ -67,7 +67,7 @@ if docker-compose ps | grep -q "Up"; then
     echo "🎉 Deployment successful!"
     echo ""
     echo "📊 Service Status:"
-    docker-compose ps
+    docker compose ps
     echo ""
     echo "🌐 Application URLs:"
     echo "   • Main App: http://localhost:3000"
@@ -75,12 +75,12 @@ if docker-compose ps | grep -q "Up"; then
     echo "   • Redis: localhost:6379"
     echo ""
     echo "📝 Useful commands:"
-    echo "   • View logs: docker-compose logs -f"
-    echo "   • Stop services: docker-compose down"
-    echo "   • Restart: docker-compose restart"
-    echo "   • View Redis data: docker-compose exec redis redis-cli monitor"
+    echo "   • View logs: docker compose logs -f"
+    echo "   • Stop services: docker compose down"
+    echo "   • Restart: docker compose restart"
+    echo "   • View Redis data: docker compose exec redis redis-cli monitor"
     echo ""
 else
-    echo "❌ Deployment failed! Check logs with: docker-compose logs"
+    echo "❌ Deployment failed! Check logs with: docker compose logs"
     exit 1
 fi

@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { cacheGet, cacheSet, generateBboxCacheKey } from '@/lib/redis';
 
+// Make this route dynamic to avoid build-time static generation
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);

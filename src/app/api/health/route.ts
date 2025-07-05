@@ -1,6 +1,9 @@
 import { NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
 
+// This route should be dynamic to avoid static generation during build
+export const dynamic = 'force-dynamic';
+
 export async function GET() {
   try {
     // Check Redis connection

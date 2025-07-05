@@ -3,20 +3,25 @@ import { WaterSite, USGSResponse } from '@/types/water';
 
 export class USGSService {
   static async getWaterSites(
-    bbox?: { north: number; south: number; east: number; west: number }
+    bbox?: { north: number; south: number; east: number; west: number },
+    hours: number = 8
   ): Promise<WaterSite[]> {
     try {
       let url = '/api/usgs';
       
+      const params = new URLSearchParams();
+      
       if (bbox) {
-        const params = new URLSearchParams({
-          north: bbox.north.toString(),
-          south: bbox.south.toString(),
-          east: bbox.east.toString(),
-          west: bbox.west.toString(),
-        });
-        url += `?${params.toString()}`;
+        params.append('north', bbox.north.toString());
+        params.append('south', bbox.south.toString());
+        params.append('east', bbox.east.toString());
+        params.append('west', bbox.west.toString());
       }
+      
+      // Add hours parameter
+      params.append('hours', hours.toString());
+      
+      url += `?${params.toString()}`;
 
       console.log('Fetching USGS data from API route:', url);
       
@@ -40,14 +45,14 @@ export class USGSService {
         const values = timeSeries.values[0]?.value || [];
         const latestValue = values[values.length - 1];
         
-        // Process chart data (last 8 hours)
+        // Process chart data based on requested hours
         const chartData = values
           .filter((v: any) => v.value !== '-999999')
           .map((v: any) => ({
             time: new Date(v.dateTime).getTime(),
             value: parseFloat(v.value)
           }))
-          .slice(-48); // Last 48 points (8 hours at 10-min intervals)
+          .slice(-Math.min(values.length, Math.ceil(hours * 6))); // Approximate points based on hours (10-min intervals)
         
         let waterLevel: number | undefined;
         let waterLevelStatus: 'high' | 'normal' | 'low' | 'unknown' = 'unknown';
@@ -107,11 +112,11 @@ export class USGSService {
     }
   }
 
-  static async getSiteDetails(siteId: string): Promise<WaterSite | null> {
+  static async getSiteDetails(siteId: string, hours: number = 8): Promise<WaterSite | null> {
     try {
-      // Fetch last 8 hours of data (period=PT8H for 8 hours)
+      // Fetch data for specified hours (period=PT{hours}H)
       const USGS_BASE_URL = 'https://waterservices.usgs.gov/nwis/iv/';
-      const url = `${USGS_BASE_URL}?format=json&sites=${siteId}&parameterCd=00065,00060&period=PT8H`;
+      const url = `${USGS_BASE_URL}?format=json&sites=${siteId}&parameterCd=00065,00060&period=PT${hours}H`;
       
       const response = await axios.get<USGSResponse>(url);
       
@@ -132,12 +137,12 @@ export class USGSService {
 
       // Process historical data for chart
       const chartData = values
-        .filter(v => v.value !== '-999999')
-        .map(v => ({
+        .filter((v: any) => v.value !== '-999999')
+        .map((v: any) => ({
           time: new Date(v.dateTime).getTime(),
           value: parseFloat(v.value)
         }))
-        .slice(-48); // Last 48 points (8 hours at 10-min intervals)
+        .slice(-Math.min(values.length, Math.ceil(hours * 6))); // Approximate points based on hours (10-min intervals)
 
       return {
         id: siteId,

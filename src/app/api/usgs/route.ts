@@ -4,6 +4,9 @@ import { cacheGet, cacheSet, generateBboxCacheKey } from '@/lib/redis';
 
 const USGS_BASE_URL = 'https://waterservices.usgs.gov/nwis/iv/';
 
+// Make this route dynamic to avoid build-time static generation
+export const dynamic = 'force-dynamic';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -14,8 +17,11 @@ export async function GET(request: NextRequest) {
       west: parseFloat(parseFloat(searchParams.get('west') || '0').toFixed(6)),
     };
 
-    // Generate cache key for USGS data
-    const cacheKey = `usgs:${generateBboxCacheKey(bbox)}`;
+    // Get time range parameter (in hours), default to 8 hours
+    const hours = parseInt(searchParams.get('hours') || '8');
+    
+    // Generate cache key for USGS data including time range
+    const cacheKey = `usgs:${generateBboxCacheKey(bbox)}:${hours}h`;
     
     // Try to get from cache first
     console.log('Checking cache for USGS data:', cacheKey);
@@ -32,7 +38,9 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    let url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060&siteStatus=active&period=PT8H`;
+    // Convert hours to ISO 8601 duration format for USGS API
+    const period = `PT${hours}H`;
+    let url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060&siteStatus=active&period=${period}`;
     
     if (bbox.north && bbox.south && bbox.east && bbox.west) {
       url += `&bBox=${bbox.west},${bbox.south},${bbox.east},${bbox.north}`;

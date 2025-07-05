@@ -21,6 +21,8 @@ L.Icon.Default.mergeOptions({
 interface MapViewProps {
   sites: WaterSite[];
   waterways: Waterway[];
+  globalTrendHours: number;
+  onTrendHoursChange: (hours: number) => void;
 }
 
 // Component to handle map events and overlay positioning
@@ -203,11 +205,10 @@ const createCustomIcon = (status: string) => {
 };
 
 
-const MapView: React.FC<MapViewProps> = ({ sites, waterways }) => {
+const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, onTrendHoursChange }) => {
   const defaultCenter: [number, number] = [30.6327, -97.6769]; // Georgetown, TX
   const defaultZoom = 11;
   const [visibleSites, setVisibleSites] = useState<WaterSite[]>(sites);
-  const [globalTrendHours, setGlobalTrendHours] = useState(24);
   const [chartsVisible, setChartsVisible] = useState(false);
   const [waterwaysVisible, setWaterwaysVisible] = useState(true);
   const mapRef = useRef<any>(null);
@@ -293,7 +294,7 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways }) => {
           <select
             className="border rounded px-2 py-1 text-sm bg-white text-gray-700 w-full"
             value={globalTrendHours}
-            onChange={e => setGlobalTrendHours(Number(e.target.value))}
+            onChange={e => onTrendHoursChange(Number(e.target.value))}
           >
             <option value={1}>1 hour</option>
             <option value={8}>8 hours</option>
@@ -415,7 +416,7 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways }) => {
                 {site.chartData && site.chartData.length > 0 && (
                   <div className="mt-3 pt-2 border-t border-gray-200">
                     <div className="text-xs font-semibold text-gray-600 mb-2">
-                      Last 8 Hours Water Level (Detailed View)
+                      Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Detailed View)
                     </div>
                     <WaterLevelChart 
                       data={site.chartData} 
