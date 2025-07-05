@@ -1,0 +1,43 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Leaflet CSS overrides */
+.leaflet-container {
+  height: 100vh !important;
+  width: 100% !important;
+  z-index: 0;
+}
+
+.leaflet-control-container {
+  z-index: 1000;
+}
+
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+}
+
+.custom-popup {
+  max-width: 300px;
+}
+
+.custom-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
+.water-level-high {
+  background-color: #dc2626;
+}
+
+.water-level-normal {
+  background-color: #16a34a;
+}
+
+.water-level-low {
+  background-color: #ca8a04;
+}
+
+.water-level-unknown {
+  background-color: #6b7280;
+}
