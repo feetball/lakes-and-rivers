@@ -52,7 +52,11 @@ export async function GET(request: NextRequest) {
 
     // Convert hours to ISO 8601 duration format for USGS API
     const period = `PT${hours}H`;
-    let url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060&siteStatus=active&period=${period}`;
+    // Include additional parameter codes for lake levels and reservoir storage
+    // 00062 = Lake elevation, above NGVD 1929
+    // 00054 = Reservoir storage, total
+    // 62614 = Lake elevation above NAVD 1988
+    let url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060,00062,00054,62614&siteStatus=active&period=${period}`;
     
     // Always include bounding box (either provided or default)
     url += `&bBox=${activeBbox.west},${activeBbox.south},${activeBbox.east},${activeBbox.north}`;

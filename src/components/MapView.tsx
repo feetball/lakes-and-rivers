@@ -239,10 +239,14 @@ const createCustomIcon = (site: WaterSite) => {
   };
 
   const color = colors[floodRisk];
+  
+  // Use different icon shapes for different site types
+  const isLakeOrReservoir = site.siteType === 'lake' || site.siteType === 'reservoir';
+  const iconShape = isLakeOrReservoir ? 'border-radius: 20%;' : 'border-radius: 50%;';
 
   return L.divIcon({
     className: 'custom-marker',
-    html: `<div style="background-color: ${color}; width: 20px; height: 20px; border-radius: 50%; border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: pointer;"></div>`,
+    html: `<div style="background-color: ${color}; width: 20px; height: 20px; ${iconShape} border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: pointer;"></div>`,
     iconSize: [26, 26],
     iconAnchor: [13, 13],
   });
@@ -518,7 +522,7 @@ const MapView: React.FC<MapViewProps> = ({
                   onChange={e => setWaterwaysVisible(e.target.checked)}
                   className="rounded"
                 />
-                <span className="text-gray-700">Show Major Rivers</span>
+                <span className="text-gray-700">Show Rivers & Lakes</span>
               </label>
             </div>
             
@@ -627,6 +631,9 @@ const MapView: React.FC<MapViewProps> = ({
                     <strong>Site ID:</strong> {site.id}
                   </div>
                   <div>
+                    <strong>Type:</strong> {site.siteType ? site.siteType.charAt(0).toUpperCase() + site.siteType.slice(1) : 'River'} Gauge
+                  </div>
+                  <div>
                     <strong>Status:</strong>{' '}
                     <span
                       className={`inline-block px-1 py-0.5 rounded text-xs text-white ${getFloodRiskDisplay(site).bgColor}`}
@@ -637,6 +644,16 @@ const MapView: React.FC<MapViewProps> = ({
                   {site.gageHeight && (
                     <div>
                       <strong>Gage Height:</strong> {formatWaterLevel(site.gageHeight)}
+                    </div>
+                  )}
+                  {site.lakeElevation && (
+                    <div>
+                      <strong>Lake Elevation:</strong> {formatWaterLevel(site.lakeElevation)}
+                    </div>
+                  )}
+                  {site.reservoirStorage && (
+                    <div>
+                      <strong>Storage:</strong> {formatWaterLevel(site.reservoirStorage, 'acre-ft')}
                     </div>
                   )}
                   {site.floodStage && (
@@ -694,6 +711,9 @@ const MapView: React.FC<MapViewProps> = ({
                     <strong>Site ID:</strong> {site.id}
                   </div>
                   <div>
+                    <strong>Type:</strong> {site.siteType ? site.siteType.charAt(0).toUpperCase() + site.siteType.slice(1) : 'River'} Gauge
+                  </div>
+                  <div>
                     <strong>Status:</strong>{' '}
                     <span
                       className={`inline-block px-2 py-1 rounded text-xs text-white ${getFloodRiskDisplay(site).bgColor}`}
@@ -704,6 +724,16 @@ const MapView: React.FC<MapViewProps> = ({
                   {site.gageHeight && (
                     <div>
                       <strong>Gage Height:</strong> {formatWaterLevel(site.gageHeight)}
+                    </div>
+                  )}
+                  {site.lakeElevation && (
+                    <div>
+                      <strong>Lake Elevation:</strong> {formatWaterLevel(site.lakeElevation)}
+                    </div>
+                  )}
+                  {site.reservoirStorage && (
+                    <div>
+                      <strong>Storage:</strong> {formatWaterLevel(site.reservoirStorage, 'acre-ft')}
                     </div>
                   )}
                   {site.floodStage && (

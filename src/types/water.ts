@@ -8,6 +8,9 @@ export interface WaterSite {
   lastUpdated?: string;
   streamflow?: number;
   gageHeight?: number;
+  lakeElevation?: number;
+  reservoirStorage?: number;
+  siteType?: 'river' | 'lake' | 'reservoir' | 'stream';
   chartData?: Array<{
     time: number;
     value: number;

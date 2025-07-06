@@ -56,20 +56,43 @@ export class USGSService {
         
         let waterLevel: number | undefined;
         let waterLevelStatus: 'high' | 'normal' | 'low' | 'unknown' = 'unknown';
+        let siteType: 'river' | 'lake' | 'reservoir' | 'stream' = 'river'; // Default to river
+        
+        // Determine site type based on variable name and site name
+        const siteName = sourceInfo.siteName.toLowerCase();
+        const variableName = timeSeries.variable.variableName.toLowerCase();
+        
+        if (siteName.includes('lake') || siteName.includes('reservoir') || 
+            variableName.includes('lake') || variableName.includes('reservoir') || 
+            variableName.includes('elevation') || variableName.includes('storage')) {
+          siteType = siteName.includes('reservoir') ? 'reservoir' : 'lake';
+        }
         
         if (latestValue && latestValue.value !== '-999999') {
           waterLevel = parseFloat(latestValue.value);
           
-          // Enhanced classification that will be improved with flood stage data later
-          if (timeSeries.variable.variableName.includes('Gage height')) {
-            // For gage height, use more conservative thresholds until flood stages are loaded
-            if (waterLevel > 15) waterLevelStatus = 'high';
-            else if (waterLevel > 2) waterLevelStatus = 'normal';
-            else waterLevelStatus = 'low';
-          } else if (timeSeries.variable.variableName.includes('Streamflow')) {
+          // Enhanced classification based on site type and variable
+          if (variableName.includes('gage height') || variableName.includes('elevation')) {
+            if (siteType === 'lake' || siteType === 'reservoir') {
+              // For lake/reservoir elevation, use different thresholds
+              if (waterLevel > 500) waterLevelStatus = 'normal'; // Most lake elevations are in hundreds of feet
+              else if (waterLevel > 200) waterLevelStatus = 'low';
+              else waterLevelStatus = 'low';
+            } else {
+              // For river gage height, use existing logic
+              if (waterLevel > 15) waterLevelStatus = 'high';
+              else if (waterLevel > 2) waterLevelStatus = 'normal';
+              else waterLevelStatus = 'low';
+            }
+          } else if (variableName.includes('streamflow')) {
             // For streamflow, classify based on typical ranges
             if (waterLevel > 1000) waterLevelStatus = 'high';
             else if (waterLevel > 100) waterLevelStatus = 'normal';
+            else waterLevelStatus = 'low';
+          } else if (variableName.includes('storage')) {
+            // For reservoir storage, classify based on capacity
+            if (waterLevel > 50000) waterLevelStatus = 'high';
+            else if (waterLevel > 10000) waterLevelStatus = 'normal';
             else waterLevelStatus = 'low';
           }
         }
@@ -83,11 +106,18 @@ export class USGSService {
           waterLevelStatus,
           lastUpdated: latestValue?.dateTime,
           chartData,
-          ...(timeSeries.variable.variableName.includes('Gage height') && {
+          siteType, // Add site type to the returned data
+          ...(variableName.includes('gage height') && {
             gageHeight: waterLevel
           }),
-          ...(timeSeries.variable.variableName.includes('Streamflow') && {
+          ...(variableName.includes('streamflow') && {
             streamflow: waterLevel
+          }),
+          ...(variableName.includes('elevation') && {
+            lakeElevation: waterLevel
+          }),
+          ...(variableName.includes('storage') && {
+            reservoirStorage: waterLevel
           })
         };
       });
@@ -101,6 +131,12 @@ export class USGSService {
           // Merge data if we have multiple parameters for the same site
           if (site.gageHeight) existing.gageHeight = site.gageHeight;
           if (site.streamflow) existing.streamflow = site.streamflow;
+          if (site.lakeElevation) existing.lakeElevation = site.lakeElevation;
+          if (site.reservoirStorage) existing.reservoirStorage = site.reservoirStorage;
+          // Keep the most descriptive site type
+          if (site.siteType && (site.siteType === 'lake' || site.siteType === 'reservoir')) {
+            existing.siteType = site.siteType;
+          }
         }
         return acc;
       }, [] as WaterSite[]);
