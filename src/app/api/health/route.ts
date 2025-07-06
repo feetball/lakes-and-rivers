@@ -19,7 +19,7 @@ export async function GET() {
       try {
         await redis.ping();
         redisStatus = 'connected';
-      } catch (error) {
+      } catch {
         redisStatus = 'error';
       }
     }

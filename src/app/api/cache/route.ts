@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRedisClient, cacheDelete } from '@/lib/redis';
+import { getRedisClient } from '@/lib/redis';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     const client = await getRedisClient();
     if (!client) {

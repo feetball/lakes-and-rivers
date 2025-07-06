@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getRedisClient, cacheDelete } from '@/lib/redis';
+import { getRedisClient } from '@/lib/redis';
 
 // This route should be dynamic to avoid static generation during build
 export const dynamic = 'force-dynamic';

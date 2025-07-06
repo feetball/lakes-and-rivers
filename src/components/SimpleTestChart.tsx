@@ -65,7 +65,7 @@ const SimpleTestChart: React.FC = () => {
     console.error('Error rendering chart:', error);
     return (
       <div className="w-full h-32 bg-red-100 border border-red-500 flex items-center justify-center">
-        <span className="text-sm font-bold text-red-600">Chart Error: {error.message}</span>
+        <span className="text-sm font-bold text-red-600">Chart Error: {error instanceof Error ? error.message : 'Unknown error'}</span>
       </div>
     );
   }

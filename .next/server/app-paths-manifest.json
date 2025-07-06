@@ -1,12 +1,12 @@
 {
   "/_not-found/page": "app/_not-found/page.js",
   "/page": "app/page.js",
-  "/api/flood-stages/route": "app/api/flood-stages/route.js",
   "/api/historical/route": "app/api/historical/route.js",
-  "/api/cache/route": "app/api/cache/route.js",
-  "/api/cache-stats/route": "app/api/cache-stats/route.js",
-  "/api/health/route": "app/api/health/route.js",
-  "/api/waterways/route": "app/api/waterways/route.js",
+  "/api/flood-stages/route": "app/api/flood-stages/route.js",
   "/api/usgs/route": "app/api/usgs/route.js",
-  "/api/admin/cache/route": "app/api/admin/cache/route.js"
+  "/api/cache-stats/route": "app/api/cache-stats/route.js",
+  "/api/admin/cache/route": "app/api/admin/cache/route.js",
+  "/api/waterways/route": "app/api/waterways/route.js",
+  "/api/cache/route": "app/api/cache/route.js",
+  "/api/health/route": "app/api/health/route.js"
 }

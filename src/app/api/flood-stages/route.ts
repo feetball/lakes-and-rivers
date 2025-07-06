@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-import axios from 'axios';
 import { cacheGet, cacheSet, CACHE_TTL } from '@/lib/redis';
 
 // Make this route dynamic to avoid build-time static generation
