@@ -72,7 +72,6 @@ export async function GET(request: NextRequest) {
       acc[key] = (acc[key] || 0) + 1;
       return acc;
     }, {});
-    console.log('Element types from Overpass:', elementTypes);
 
     // Create a map of ways for relation processing
     const waysMap = new Map();
