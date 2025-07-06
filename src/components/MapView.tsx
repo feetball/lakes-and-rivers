@@ -441,7 +441,14 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
             position={[site.latitude, site.longitude]}
             icon={createCustomIcon(site.waterLevelStatus || 'unknown')}
           >
-            <Tooltip direction="top" offset={[0, -20]} opacity={0.9} className="custom-tooltip">
+            <Tooltip 
+              direction="top" 
+              offset={[0, -20]} 
+              opacity={0.9} 
+              className="custom-tooltip"
+              permanent={false}
+              sticky={false}
+            >
               <div className="p-2 max-w-xs">
                 <h3 className="font-bold text-base mb-2">{site.name}</h3>
                 <div className="space-y-1 text-xs">
