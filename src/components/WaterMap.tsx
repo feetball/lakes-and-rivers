@@ -87,6 +87,33 @@ export default function WaterMap() {
     }
   };
 
+  // Utility function to update water level status based on flood stages
+  const updateWaterLevelStatus = (site: WaterSite): WaterSite => {
+    if (!site.gageHeight || !site.floodStage) {
+      return site; // Can't determine flood status without both values
+    }
+    
+    const { gageHeight, floodStage, moderateFloodStage, majorFloodStage } = site;
+    let waterLevelStatus: 'high' | 'normal' | 'low' | 'unknown' = 'normal';
+    
+    // Determine status based on flood stage thresholds
+    if (majorFloodStage && gageHeight >= majorFloodStage) {
+      waterLevelStatus = 'high'; // Major flooding
+    } else if (moderateFloodStage && gageHeight >= moderateFloodStage) {
+      waterLevelStatus = 'high'; // Moderate flooding  
+    } else if (gageHeight >= floodStage) {
+      waterLevelStatus = 'high'; // Minor flooding
+    } else if (gageHeight >= floodStage * 0.8) {
+      waterLevelStatus = 'high'; // Approaching flood stage
+    } else if (gageHeight >= floodStage * 0.3) {
+      waterLevelStatus = 'normal'; // Normal range
+    } else {
+      waterLevelStatus = 'low'; // Below normal
+    }
+    
+    return { ...site, waterLevelStatus };
+  };
+
   const loadWaterSites = async () => {
     try {
       setLoading(true);
@@ -116,9 +143,37 @@ export default function WaterMap() {
         })
         .slice(0, 150); // Limit to 150 most active sites for performance
       
-      setSites(activeSites);
-      console.log(`Performance optimization: Showing ${activeSites.length} most active sites (from ${waterSites.length} total)`);
-      console.log('Sites with chart data:', activeSites.length);
+      // Enrich sites with flood stage data and update status
+      console.log('Enriching sites with flood stage data...');
+      const enrichedSites = await Promise.all(
+        activeSites.map(async (site) => {
+          try {
+            const response = await fetch(`/api/flood-stages?siteId=${site.id}`);
+            if (response.ok) {
+              const floodData = await response.json();
+              const siteWithFloodData = {
+                ...site,
+                floodStage: floodData.floodStage,
+                moderateFloodStage: floodData.moderateFloodStage,
+                majorFloodStage: floodData.majorFloodStage,
+                actionStage: floodData.actionStage
+              };
+              // Update water level status based on flood stage data
+              return updateWaterLevelStatus(siteWithFloodData);
+            }
+          } catch (error) {
+            console.warn(`Failed to fetch flood stages for site ${site.id}:`, error);
+          }
+          return site;
+        })
+      );
+      
+      const updatedEnrichedSites = enrichedSites.map(updateWaterLevelStatus);
+      
+      setSites(updatedEnrichedSites);
+      console.log(`Performance optimization: Showing ${updatedEnrichedSites.length} most active sites (from ${waterSites.length} total)`);
+      console.log('Sites with chart data:', updatedEnrichedSites.length);
+      console.log('Sites enriched with flood stages:', updatedEnrichedSites.filter(s => s.floodStage).length);
       
       // If no sites found, add some test sites for demonstration
       if (waterSites.length === 0) {

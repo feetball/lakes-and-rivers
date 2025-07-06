@@ -112,6 +112,12 @@ function getFloodStageForSite(siteId: string): Partial<FloodStageData> {
       majorFloodStage: 23.0,
       actionStage: 13.0
     },
+    '08105300': { // San Gabriel River near Weir, TX
+      floodStage: 25.0,
+      moderateFloodStage: 28.0,
+      majorFloodStage: 32.0,
+      actionStage: 22.0
+    },
     
     // Colorado River sites
     '08158000': { // Colorado River at Austin

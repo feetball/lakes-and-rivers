@@ -60,11 +60,11 @@ export class USGSService {
         if (latestValue && latestValue.value !== '-999999') {
           waterLevel = parseFloat(latestValue.value);
           
-          // Simple classification based on parameter type
+          // Enhanced classification that will be improved with flood stage data later
           if (timeSeries.variable.variableName.includes('Gage height')) {
-            // For gage height, classify based on typical ranges
-            if (waterLevel > 10) waterLevelStatus = 'high';
-            else if (waterLevel > 3) waterLevelStatus = 'normal';
+            // For gage height, use more conservative thresholds until flood stages are loaded
+            if (waterLevel > 15) waterLevelStatus = 'high';
+            else if (waterLevel > 2) waterLevelStatus = 'normal';
             else waterLevelStatus = 'low';
           } else if (timeSeries.variable.variableName.includes('Streamflow')) {
             // For streamflow, classify based on typical ranges
