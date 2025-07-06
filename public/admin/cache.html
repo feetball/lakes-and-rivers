@@ -101,6 +101,16 @@
         </div>
 
         <div id="admin-section" style="display: none;">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                <h3>Cache Management</h3>
+                <div style="display: flex; align-items: center; gap: 1rem;">
+                    <span id="auth-timer" style="font-size: 0.875rem; color: #6b7280;"></span>
+                    <button onclick="logout()" style="background: #6b7280; padding: 0.5rem 1rem; font-size: 0.875rem;">
+                        Logout
+                    </button>
+                </div>
+            </div>
+            
             <div class="status" id="status">
                 Loading cache status...
             </div>
@@ -125,6 +135,117 @@
 
     <script>
         let authCredentials = null;
+        const AUTH_TIMEOUT = 30 * 60 * 1000; // 30 minutes in milliseconds
+        const AUTH_STORAGE_KEY = 'admin_auth_cache';
+        let authTimerInterval = null;
+
+        // Check for stored authentication on page load
+        function checkStoredAuth() {
+            const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+            if (storedAuth) {
+                try {
+                    const authData = JSON.parse(storedAuth);
+                    const now = Date.now();
+                    
+                    // Check if auth hasn't expired
+                    if (now < authData.expires) {
+                        authCredentials = authData.credentials;
+                        // Auto-authenticate with stored credentials
+                        authenticateWithCredentials();
+                        return true;
+                    } else {
+                        // Expired, remove from storage
+                        localStorage.removeItem(AUTH_STORAGE_KEY);
+                    }
+                } catch (error) {
+                    // Invalid stored data, remove it
+                    localStorage.removeItem(AUTH_STORAGE_KEY);
+                }
+            }
+            return false;
+        }
+
+        // Store credentials with expiration
+        function storeAuth(credentials) {
+            const authData = {
+                credentials: credentials,
+                expires: Date.now() + AUTH_TIMEOUT
+            };
+            localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(authData));
+        }
+
+        // Clear stored authentication
+        function clearStoredAuth() {
+            localStorage.removeItem(AUTH_STORAGE_KEY);
+            authCredentials = null;
+            if (authTimerInterval) {
+                clearInterval(authTimerInterval);
+                authTimerInterval = null;
+            }
+        }
+
+        // Start the authentication timer
+        function startAuthTimer() {
+            const timerElement = document.getElementById('auth-timer');
+            if (!timerElement) return;
+            
+            function updateTimer() {
+                const storedAuth = localStorage.getItem(AUTH_STORAGE_KEY);
+                if (storedAuth) {
+                    try {
+                        const authData = JSON.parse(storedAuth);
+                        const now = Date.now();
+                        const timeLeft = authData.expires - now;
+                        
+                        if (timeLeft > 0) {
+                            const minutes = Math.floor(timeLeft / 60000);
+                            const seconds = Math.floor((timeLeft % 60000) / 1000);
+                            timerElement.textContent = `Session expires in ${minutes}:${seconds.toString().padStart(2, '0')}`;
+                        } else {
+                            // Session expired
+                            logout();
+                        }
+                    } catch (error) {
+                        logout();
+                    }
+                } else {
+                    logout();
+                }
+            }
+            
+            // Update immediately and then every second
+            updateTimer();
+            authTimerInterval = setInterval(updateTimer, 1000);
+        }
+
+        async function authenticateWithCredentials() {
+            if (!authCredentials) return false;
+            
+            try {
+                const response = await fetch('/api/admin/cache', {
+                    headers: {
+                        'Authorization': `Basic ${authCredentials}`
+                    }
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    document.getElementById('auth-section').style.display = 'none';
+                    document.getElementById('admin-section').style.display = 'block';
+                    updateStatus(data);
+                    startAuthTimer();
+                    return true;
+                } else {
+                    // Auth failed, clear stored credentials
+                    clearStoredAuth();
+                    return false;
+                }
+            } catch (error) {
+                console.error('Authentication error:', error);
+                clearStoredAuth();
+                return false;
+            }
+        }
 
         async function authenticate() {
             const username = document.getElementById('username').value;
@@ -146,9 +267,14 @@
 
                 if (response.ok) {
                     const data = await response.json();
+                    
+                    // Store credentials for future use
+                    storeAuth(authCredentials);
+                    
                     document.getElementById('auth-section').style.display = 'none';
                     document.getElementById('admin-section').style.display = 'block';
                     updateStatus(data);
+                    startAuthTimer();
                 } else {
                     alert('Authentication failed. Please check your credentials.');
                     authCredentials = null;
@@ -239,10 +365,24 @@
             }
         }
 
-        // Auto-focus username field
+        function logout() {
+            clearStoredAuth();
+            document.getElementById('admin-section').style.display = 'none';
+            document.getElementById('auth-section').style.display = 'block';
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+            document.getElementById('username').focus();
+        }
+
+        // Auto-focus username field and check for stored auth
         document.addEventListener('DOMContentLoaded', () => {
             const usernameField = document.getElementById('username');
-            usernameField.focus();
+            
+            // Check for stored authentication first
+            if (!checkStoredAuth()) {
+                // No stored auth, focus on username field
+                usernameField.focus();
+            }
         });
     </script>
 </body>
