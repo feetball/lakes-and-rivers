@@ -46,8 +46,16 @@ const WaterLevelChart: React.FC<WaterLevelChartProps> = ({
 
   // Simple SVG chart that always works
   const values = data.map((d: { time: number; value: number }) => d.value);
-  const minValue = Math.min(...values);
-  const maxValue = Math.max(...values);
+  let minValue = Math.min(...values);
+  let maxValue = Math.max(...values);
+  
+  // Add some padding
+  const padding = (maxValue - minValue) * 0.1;
+  if (padding > 0) {
+    minValue -= padding;
+    maxValue += padding;
+  }
+  
   const range = maxValue - minValue || 1;
   
   const points = data.map((point: { time: number; value: number }, index: number) => {
@@ -109,7 +117,9 @@ const WaterLevelChart: React.FC<WaterLevelChartProps> = ({
       {forTooltip && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium shadow-sm border">
-            {currentValue?.toFixed(2)} ft {trend}
+            <div className="flex items-center gap-2">
+              <span>{currentValue?.toFixed(2)} ft {trend}</span>
+            </div>
           </div>
         </div>
       )}

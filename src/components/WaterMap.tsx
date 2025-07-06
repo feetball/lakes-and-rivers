@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { WaterSite } from '@/types/water';
 import { USGSService } from '@/services/usgs';
@@ -26,6 +26,10 @@ const DynamicMap = dynamic(() => import('../components/MapView'), {
   globalTrendHours: number;
   onTrendHoursChange: (hours: number) => void;
   onVisibilityStatsChange?: (stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => void;
+  chartControlsVisible?: boolean;
+  floodPanelVisible?: boolean;
+  onChartControlsVisibilityChange?: (visible: boolean) => void;
+  onFloodPanelVisibilityChange?: (visible: boolean) => void;
 }>;
 
 export default function WaterMap() {
@@ -35,6 +39,15 @@ export default function WaterMap() {
   const [error, setError] = useState<string | null>(null);
   const [selectedState, setSelectedState] = useState('');
   const [globalTrendHours, setGlobalTrendHours] = useState(24);
+  const [legendVisible, setLegendVisible] = useState(true);
+  const [chartControlsVisible, setChartControlsVisible] = useState(false); // Closed by default
+  const [floodPanelVisible, setFloodPanelVisible] = useState(true);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [lastUpdated, setLastUpdated] = useState<{
+    usgs?: string;
+    floodStages?: string;
+  }>({});
   const [visibilityStats, setVisibilityStats] = useState({
     totalSites: 0,
     visibleSites: 0,
@@ -50,6 +63,38 @@ export default function WaterMap() {
   const handleVisibilityStatsChange = useCallback((stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => {
     setVisibilityStats(stats);
   }, []);
+
+  // Close menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Format timestamp for display
+  const formatTimestamp = (timestamp?: string) => {
+    if (!timestamp) return 'Never';
+    const date = new Date(timestamp);
+    const now = new Date();
+    const diff = now.getTime() - date.getTime();
+    const minutes = Math.floor(diff / 60000);
+    
+    if (minutes < 1) return 'Just now';
+    if (minutes < 60) return `${minutes}m ago`;
+    
+    const hours = Math.floor(minutes / 60);
+    if (hours < 24) return `${hours}h ago`;
+    
+    const days = Math.floor(hours / 24);
+    return `${days}d ago`;
+  };
 
   // Load data only when trend hours changes, with debouncing
   useEffect(() => {
@@ -119,6 +164,8 @@ export default function WaterMap() {
       setLoading(true);
       setError(null);
       
+      const currentTime = new Date().toISOString();
+      
       // Load sites within 70-mile radius of Austin for better performance
       // Austin coordinates: 30.2672, -97.7431 
       const bbox = {
@@ -132,6 +179,9 @@ export default function WaterMap() {
       
       const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);
       
+      // Update USGS data timestamp
+      setLastUpdated(prev => ({ ...prev, usgs: currentTime }));
+      
       // Filter and prioritize sites for better performance
       const activeSites = waterSites
         .filter(site => site.chartData && site.chartData.length > 0) // Only sites with chart data
@@ -143,37 +193,9 @@ export default function WaterMap() {
         })
         .slice(0, 150); // Limit to 150 most active sites for performance
       
-      // Enrich sites with flood stage data and update status
-      console.log('Enriching sites with flood stage data...');
-      const enrichedSites = await Promise.all(
-        activeSites.map(async (site) => {
-          try {
-            const response = await fetch(`/api/flood-stages?siteId=${site.id}`);
-            if (response.ok) {
-              const floodData = await response.json();
-              const siteWithFloodData = {
-                ...site,
-                floodStage: floodData.floodStage,
-                moderateFloodStage: floodData.moderateFloodStage,
-                majorFloodStage: floodData.majorFloodStage,
-                actionStage: floodData.actionStage
-              };
-              // Update water level status based on flood stage data
-              return updateWaterLevelStatus(siteWithFloodData);
-            }
-          } catch (error) {
-            console.warn(`Failed to fetch flood stages for site ${site.id}:`, error);
-          }
-          return site;
-        })
-      );
-      
-      const updatedEnrichedSites = enrichedSites.map(updateWaterLevelStatus);
-      
-      setSites(updatedEnrichedSites);
-      console.log(`Performance optimization: Showing ${updatedEnrichedSites.length} most active sites (from ${waterSites.length} total)`);
-      console.log('Sites with chart data:', updatedEnrichedSites.length);
-      console.log('Sites enriched with flood stages:', updatedEnrichedSites.filter(s => s.floodStage).length);
+      setSites(activeSites);
+      console.log(`Performance optimization: Showing ${activeSites.length} most active sites (from ${waterSites.length} total)`);
+      console.log('Sites with chart data:', activeSites.length);
       
       // If no sites found, add some test sites for demonstration
       if (waterSites.length === 0) {
@@ -362,12 +384,108 @@ export default function WaterMap() {
               </span>
             )}
           </h1>
-          <div className="flex items-center space-x-4">
+          <div className="flex items-center space-x-3">
+            {/* Dropdown Menu */}
+            <div className="relative" ref={menuRef}>
+              <button
+                onClick={() => setMenuOpen(!menuOpen)}
+                className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md text-sm font-medium shadow-lg flex items-center gap-2"
+              >
+                <span>⚙️</span>
+                Controls
+                <span className={`transform transition-transform ${menuOpen ? 'rotate-180' : ''}`}>▼</span>
+              </button>
+              
+              {menuOpen && (
+                <div className="absolute right-0 mt-2 w-56 bg-white rounded-md shadow-lg border border-gray-200 z-50">
+                  <div className="py-1">
+                    {!chartControlsVisible && (
+                      <button
+                        onClick={() => {
+                          setChartControlsVisible(true);
+                          setMenuOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <span>⚙️</span>
+                        Show Chart Controls
+                      </button>
+                    )}
+                    {chartControlsVisible && (
+                      <button
+                        onClick={() => {
+                          setChartControlsVisible(false);
+                          setMenuOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <span>⚙️</span>
+                        Hide Chart Controls
+                      </button>
+                    )}
+                    
+                    {!floodPanelVisible && (
+                      <button
+                        onClick={() => {
+                          setFloodPanelVisible(true);
+                          setMenuOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <span>🌊</span>
+                        Show Flood Status
+                      </button>
+                    )}
+                    {floodPanelVisible && (
+                      <button
+                        onClick={() => {
+                          setFloodPanelVisible(false);
+                          setMenuOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <span>🌊</span>
+                        Hide Flood Status
+                      </button>
+                    )}
+                    
+                    {!legendVisible && (
+                      <button
+                        onClick={() => {
+                          setLegendVisible(true);
+                          setMenuOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <span>📊</span>
+                        Show Legend
+                      </button>
+                    )}
+                    {legendVisible && (
+                      <button
+                        onClick={() => {
+                          setLegendVisible(false);
+                          setMenuOpen(false);
+                        }}
+                        className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <span>📊</span>
+                        Hide Legend
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+            
             <div className="text-sm text-gray-600">
               {visibilityStats.gaugeSitesVisible 
                 ? `Showing ${visibilityStats.visibleSites} of ${sites.length} sites within 100 miles of Austin`
                 : `${sites.length} gauge sites available (currently hidden)`
               }
+              <div className="text-xs text-gray-500 mt-1">
+                USGS: {formatTimestamp(lastUpdated.usgs)} • Flood Stages: {formatTimestamp(lastUpdated.floodStages)}
+              </div>
             </div>
             <button 
               onClick={loadWaterSites}
@@ -380,11 +498,13 @@ export default function WaterMap() {
       </div>
 
       {/* Legend - Now Draggable */}
-      <DraggableBox 
-        id="water-level-legend"
-        title="Water Level Status"
-        initialPosition={{ x: 16, y: 80 }}
-      >
+      {legendVisible && (
+        <DraggableBox 
+          id="water-level-legend"
+          title="Water Level Status"
+          initialPosition={{ x: 16, y: 80 }}
+          onClose={() => setLegendVisible(false)}
+        >
         <div className="space-y-1 text-sm mb-4">
           <div className="flex items-center">
             <div className="w-4 h-4 bg-red-600 rounded-full mr-2"></div>
@@ -437,6 +557,7 @@ export default function WaterMap() {
           </div>
         </div>
       </DraggableBox>
+      )}
 
       {/* Map */}
       <div className="pt-16 h-full">
@@ -446,6 +567,10 @@ export default function WaterMap() {
           globalTrendHours={globalTrendHours}
           onTrendHoursChange={handleTrendHoursChange}
           onVisibilityStatsChange={handleVisibilityStatsChange}
+          chartControlsVisible={chartControlsVisible}
+          floodPanelVisible={floodPanelVisible}
+          onChartControlsVisibilityChange={setChartControlsVisible}
+          onFloodPanelVisibilityChange={setFloodPanelVisible}
         />
         
         {/* Cache Management */}

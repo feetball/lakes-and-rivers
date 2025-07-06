@@ -1,0 +1,29 @@
+# Flood Stage Validation Cron Jobs
+# Add these to your crontab with: crontab -e
+
+# Daily audit at 2 AM (checks all sites for verification status)
+0 2 * * * cd /opt/lakes-and-rivers && node scripts/validate-flood-stages.js --audit-only >> logs/cron-flood-audit.log 2>&1
+
+# Weekly verification update on Sundays at 3 AM
+0 3 * * 0 cd /opt/lakes-and-rivers && node scripts/validate-flood-stages.js --update-all >> logs/cron-flood-update.log 2>&1
+
+# Monthly comprehensive audit on 1st of month at 4 AM
+0 4 1 * * cd /opt/lakes-and-rivers && node scripts/validate-flood-stages.js --update-all --verbose >> logs/cron-flood-monthly.log 2>&1
+
+# After high water events (manually triggered)
+# 0 6 * * * cd /opt/lakes-and-rivers && node scripts/validate-flood-stages.js --audit-only --verbose >> logs/cron-flood-post-event.log 2>&1
+
+# Configuration Notes:
+# - Logs are written to logs/ directory
+# - Use --audit-only for read-only checks
+# - Use --update-all to refresh verified data
+# - Use --verbose for detailed output in logs
+# - Consider running after major flood events to verify accuracy
+
+# To install these cron jobs:
+# 1. Save this file as flood-stage-cron.txt
+# 2. Run: crontab flood-stage-cron.txt
+# 3. Verify with: crontab -l
+
+# To monitor logs:
+# tail -f logs/cron-flood-*.log

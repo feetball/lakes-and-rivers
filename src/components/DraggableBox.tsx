@@ -10,6 +10,7 @@ interface DraggableBoxProps {
   className?: string;
   id: string;
   usePortal?: boolean; // Option to render outside map container
+  onClose?: () => void; // Optional close callback
 }
 
 const DraggableBox: React.FC<DraggableBoxProps> = ({ 
@@ -18,7 +19,8 @@ const DraggableBox: React.FC<DraggableBoxProps> = ({
   initialPosition = { x: 0, y: 0 }, 
   className = '',
   id,
-  usePortal = true // Default to using portal to avoid Leaflet interference
+  usePortal = true, // Default to using portal to avoid Leaflet interference
+  onClose
 }) => {
   const [position, setPosition] = useState(initialPosition);
   const [isDragging, setIsDragging] = useState(false);
@@ -148,10 +150,24 @@ const DraggableBox: React.FC<DraggableBoxProps> = ({
         >
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700 pointer-events-none">{title}</span>
-            <div className="flex space-x-1 pointer-events-none">
-              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
-              <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+            <div className="flex items-center space-x-2">
+              {onClose && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClose();
+                  }}
+                  className="w-4 h-4 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-xs pointer-events-auto"
+                  style={{ pointerEvents: 'auto' }}
+                >
+                  ×
+                </button>
+              )}
+              <div className="flex space-x-1 pointer-events-none">
+                <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+                <div className="w-2 h-2 bg-gray-400 rounded-full"></div>
+              </div>
             </div>
           </div>
         </div>

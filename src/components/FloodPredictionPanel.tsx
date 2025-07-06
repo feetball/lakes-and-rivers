@@ -8,6 +8,7 @@ interface FloodPredictionPanelProps {
   gaugeSites: WaterSite[];
   waterways: Waterway[];
   enabled: boolean;
+  onClose?: () => void;
 }
 
 interface FloodPrediction {
@@ -21,7 +22,8 @@ interface FloodPrediction {
 const FloodPredictionPanel: React.FC<FloodPredictionPanelProps> = ({ 
   gaugeSites, 
   waterways, 
-  enabled 
+  enabled,
+  onClose
 }) => {
   const predictions = useMemo<FloodPrediction[]>(() => {
     if (!enabled) return [];
@@ -116,9 +118,19 @@ const FloodPredictionPanel: React.FC<FloodPredictionPanelProps> = ({
 
   return (
     <div className="absolute bottom-4 right-4 z-[1001] bg-white rounded-lg shadow-lg border p-4 max-w-sm">
-      <div className="flex items-center mb-3">
-        <span className="text-xl mr-2">🌊</span>
-        <h3 className="font-bold text-lg text-red-600">Flood Alert</h3>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center">
+          <span className="text-xl mr-2">🌊</span>
+          <h3 className="font-bold text-lg text-red-600">Flood Alert</h3>
+        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="w-6 h-6 bg-red-500 hover:bg-red-600 text-white rounded-full flex items-center justify-center text-sm"
+          >
+            ×
+          </button>
+        )}
       </div>
       
       <div className="text-sm text-gray-700 mb-3">

@@ -28,6 +28,10 @@ interface MapViewProps {
   globalTrendHours: number;
   onTrendHoursChange: (hours: number) => void;
   onVisibilityStatsChange?: (stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => void;
+  chartControlsVisible?: boolean;
+  floodPanelVisible?: boolean;
+  onChartControlsVisibilityChange?: (visible: boolean) => void;
+  onFloodPanelVisibilityChange?: (visible: boolean) => void;
 }
 
 // Component to handle map events and overlay positioning
@@ -191,15 +195,50 @@ const MapOverlayHandler: React.FC<{ sites: WaterSite[]; globalTrendHours: number
   );
 };
 
-const createCustomIcon = (status: string) => {
+// Unified flood risk assessment function (matches FloodAwareWaterwayLayer)
+const determineFloodRisk = (site: WaterSite): 'extreme' | 'high' | 'moderate' | 'normal' | 'low' | 'unknown' => {
+  if (!site.gageHeight) return 'unknown';
+  
+  // Enhanced flood risk assessment using flood stage data
+  const { gageHeight, floodStage, streamflow } = site;
+  
+  // If we have flood stage data, use it for more accurate assessment (PRIORITY)
+  if (floodStage && gageHeight) {
+    const floodRatio = gageHeight / floodStage;
+    if (floodRatio >= 1.2) return 'extreme';  // 20% above flood stage
+    if (floodRatio >= 1.0) return 'high';     // At or above flood stage
+    if (floodRatio >= 0.8) return 'moderate'; // Approaching flood stage
+    if (floodRatio >= 0.5) return 'normal';   // Normal levels
+    return 'low';                             // Below normal
+  }
+  
+  // Fallback to basic status with streamflow consideration if no flood stage
+  const waterLevelStatus = site.waterLevelStatus;
+  if (waterLevelStatus === 'high') {
+    // Consider streamflow for more nuanced assessment
+    if (streamflow && streamflow > 1000) return 'extreme';
+    if (streamflow && streamflow > 500) return 'high';
+    return 'moderate';
+  }
+  
+  if (waterLevelStatus === 'normal') return 'normal';
+  if (waterLevelStatus === 'low') return 'low';
+  return 'unknown';
+};
+
+const createCustomIcon = (site: WaterSite) => {
+  const floodRisk = determineFloodRisk(site);
+  
   const colors = {
-    high: '#dc2626',
-    normal: '#16a34a',
-    low: '#ca8a04',
-    unknown: '#6b7280'
+    extreme: '#dc2626', // Bright red
+    high: '#ea580c',    // Red-orange
+    moderate: '#d97706', // Orange
+    normal: '#16a34a',   // Green
+    low: '#0891b2',      // Teal (low water)
+    unknown: '#6b7280'   // Gray
   };
 
-  const color = colors[status as keyof typeof colors] || colors.unknown;
+  const color = colors[floodRisk];
 
   return L.divIcon({
     className: 'custom-marker',
@@ -210,7 +249,17 @@ const createCustomIcon = (status: string) => {
 };
 
 
-const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, onTrendHoursChange, onVisibilityStatsChange }) => {
+const MapView: React.FC<MapViewProps> = ({ 
+  sites, 
+  waterways, 
+  globalTrendHours, 
+  onTrendHoursChange, 
+  onVisibilityStatsChange,
+  chartControlsVisible = true,
+  floodPanelVisible = true,
+  onChartControlsVisibilityChange,
+  onFloodPanelVisibilityChange
+}) => {
   const defaultCenter: [number, number] = [30.6327, -97.6769]; // Georgetown, TX
   const defaultZoom = 11;
   const [visibleSites, setVisibleSites] = useState<WaterSite[]>(sites);
@@ -220,7 +269,58 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
   const [floodAwarenessEnabled, setFloodAwarenessEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
   const [controlsPosition, setControlsPosition] = useState({ x: 0, y: 16 });
+  const [isLocalNetwork, setIsLocalNetwork] = useState(false);
+  const [cacheStats, setCacheStats] = useState<any>(null);
   const mapRef = useRef<any>(null);
+
+  // Check if user is on local network for cache management
+  useEffect(() => {
+    const checkLocalNetwork = () => {
+      const hostname = window.location.hostname;
+      const isLocal = hostname === 'localhost' || 
+                     hostname === '127.0.0.1' || 
+                     hostname.startsWith('192.168.11.') ||
+                     hostname.startsWith('10.') ||
+                     hostname.startsWith('172.16.') ||
+                     hostname.startsWith('172.17.') ||
+                     hostname.startsWith('172.18.') ||
+                     hostname.startsWith('172.19.') ||
+                     hostname.startsWith('172.2') ||
+                     hostname.startsWith('172.30.') ||
+                     hostname.startsWith('172.31.');
+      
+      setIsLocalNetwork(isLocal);
+    };
+
+    checkLocalNetwork();
+  }, []);
+
+  // Cache management functions
+  const fetchCacheStats = async () => {
+    try {
+      const response = await fetch('/api/cache');
+      if (response.ok) {
+        const data = await response.json();
+        setCacheStats(data);
+      }
+    } catch (error) {
+      console.error('Error fetching cache stats:', error);
+    }
+  };
+
+  const clearAllCache = async () => {
+    try {
+      const response = await fetch('/api/cache?type=all', { method: 'DELETE' });
+      if (response.ok) {
+        console.log('Cache cleared successfully');
+        setCacheStats(null);
+        // Optionally reload data
+        window.location.reload();
+      }
+    } catch (error) {
+      console.error('Error clearing cache:', error);
+    }
+  };
 
   // Mobile detection and controls positioning
   useEffect(() => {
@@ -321,89 +421,160 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
     if (level === undefined) return 'No data';
     return `${level.toFixed(2)} ${unit}`;
   };
-  const getChartColor = (status: string) => {
-    switch (status) {
-      case 'high': return '#dc2626';
-      case 'normal': return '#16a34a';
-      case 'low': return '#ca8a04';
-      default: return '#6b7280';
-    }
+  const getChartColor = (site: WaterSite) => {
+    const floodRisk = determineFloodRisk(site);
+    const colors = {
+      extreme: '#dc2626', // Bright red
+      high: '#ea580c',    // Red-orange
+      moderate: '#d97706', // Orange
+      normal: '#16a34a',   // Green
+      low: '#0891b2',      // Teal (low water)
+      unknown: '#6b7280'   // Gray
+    };
+    return colors[floodRisk];
+  };
+  
+  const getFloodRiskDisplay = (site: WaterSite) => {
+    const floodRisk = determineFloodRisk(site);
+    const labels = {
+      extreme: 'EXTREME RISK',
+      high: 'HIGH RISK',
+      moderate: 'MODERATE RISK',
+      normal: 'NORMAL',
+      low: 'LOW WATER',
+      unknown: 'UNKNOWN'
+    };
+    const bgColors = {
+      extreme: 'bg-red-600',
+      high: 'bg-orange-600', 
+      moderate: 'bg-yellow-600',
+      normal: 'bg-green-600',
+      low: 'bg-blue-600',
+      unknown: 'bg-gray-600'
+    };
+    return {
+      label: labels[floodRisk],
+      bgColor: bgColors[floodRisk],
+      risk: floodRisk
+    };
   };
 
   return (
     <div className="relative h-full w-full">
       {/* Chart Time Range and Controls - Now Draggable */}
-      <DraggableBox
-        id="chart-controls"
-        title="Chart Time Range & Controls"
-        initialPosition={controlsPosition}
-      >
-        <div className="space-y-3">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Chart Time Range
-            </label>
-            <select
-              className="border rounded px-2 py-1 text-sm bg-white text-gray-700 w-full"
-              value={globalTrendHours}
-              onChange={e => onTrendHoursChange(Number(e.target.value))}
-            >
-              <option value={1}>1 hour</option>
-              <option value={8}>8 hours</option>
-              <option value={24}>24 hours</option>
-              <option value={48}>48 hours</option>
-            </select>
+      {chartControlsVisible && (
+        <DraggableBox
+          id="chart-controls"
+          title="Chart Time Range & Controls"
+          initialPosition={controlsPosition}
+          onClose={() => onChartControlsVisibilityChange?.(false)}
+        >
+          <div className="space-y-3">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">
+                Chart Time Range
+              </label>
+              <select
+                className="border rounded px-2 py-1 text-sm bg-white text-gray-700 w-full"
+                value={globalTrendHours}
+                onChange={e => onTrendHoursChange(Number(e.target.value))}
+              >
+                <option value={1}>1 hour</option>
+                <option value={8}>8 hours</option>
+                <option value={24}>24 hours</option>
+                <option value={48}>48 hours</option>
+              </select>
+            </div>
+            
+            <div>
+              <label className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={gaugeSitesVisible}
+                  onChange={e => setGaugeSitesVisible(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-gray-700">Show Gauge Sites</span>
+              </label>
+            </div>
+            
+            <div>
+              <label className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={chartsVisible}
+                  onChange={e => setChartsVisible(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-gray-700">Show Charts & Arrows</span>
+              </label>
+            </div>
+            
+            <div>
+              <label className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={waterwaysVisible}
+                  onChange={e => setWaterwaysVisible(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-gray-700">Show Major Rivers</span>
+              </label>
+            </div>
+            
+            <div>
+              <label className="flex items-center space-x-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={floodAwarenessEnabled}
+                  onChange={e => setFloodAwarenessEnabled(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-gray-700">🌊 Flood Awareness Mode</span>
+              </label>
+            </div>
+            
+            {isLocalNetwork && (
+              <div className="pt-2 border-t border-gray-200 space-y-2">
+                <div className="text-sm font-medium text-gray-700">Cache Management</div>
+                
+                {!cacheStats ? (
+                  <button
+                    onClick={fetchCacheStats}
+                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm"
+                  >
+                    📊 Load Cache Stats
+                  </button>
+                ) : (
+                  <div className="space-y-2">
+                    <div className="bg-gray-50 p-2 rounded text-sm">
+                      <div className="font-medium">Total Keys: {cacheStats.totalKeys}</div>
+                      <div className="text-xs text-gray-600 mt-1">
+                        USGS: {cacheStats.usgsData} • Historical: {cacheStats.historicalData}
+                      </div>
+                    </div>
+                    
+                    <div className="flex gap-2">
+                      <button
+                        onClick={fetchCacheStats}
+                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs"
+                      >
+                        Refresh
+                      </button>
+                      <button
+                        onClick={clearAllCache}
+                        className="flex-1 bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs"
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-          
-          <div>
-            <label className="flex items-center space-x-2 text-sm">
-              <input
-                type="checkbox"
-                checked={gaugeSitesVisible}
-                onChange={e => setGaugeSitesVisible(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-gray-700">Show Gauge Sites</span>
-            </label>
-          </div>
-          
-          <div>
-            <label className="flex items-center space-x-2 text-sm">
-              <input
-                type="checkbox"
-                checked={chartsVisible}
-                onChange={e => setChartsVisible(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-gray-700">Show Charts & Arrows</span>
-            </label>
-          </div>
-          
-          <div>
-            <label className="flex items-center space-x-2 text-sm">
-              <input
-                type="checkbox"
-                checked={waterwaysVisible}
-                onChange={e => setWaterwaysVisible(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-gray-700">Show Major Rivers</span>
-            </label>
-          </div>
-          
-          <div>
-            <label className="flex items-center space-x-2 text-sm">
-              <input
-                type="checkbox"
-                checked={floodAwarenessEnabled}
-                onChange={e => setFloodAwarenessEnabled(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-gray-700">🌊 Flood Awareness Mode</span>
-            </label>
-          </div>
-        </div>
-      </DraggableBox>
+        </DraggableBox>
+      )}
       
       <MapContainer
         center={defaultCenter}
@@ -439,7 +610,7 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
           <Marker
             key={site.id}
             position={[site.latitude, site.longitude]}
-            icon={createCustomIcon(site.waterLevelStatus || 'unknown')}
+            icon={createCustomIcon(site)}
           >
             <Tooltip 
               direction="top" 
@@ -458,17 +629,9 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                   <div>
                     <strong>Status:</strong>{' '}
                     <span
-                      className={`inline-block px-1 py-0.5 rounded text-xs text-white ${
-                        site.waterLevelStatus === 'high'
-                          ? 'bg-red-600'
-                          : site.waterLevelStatus === 'normal'
-                          ? 'bg-green-600'
-                          : site.waterLevelStatus === 'low'
-                          ? 'bg-yellow-600'
-                          : 'bg-gray-600'
-                      }`}
+                      className={`inline-block px-1 py-0.5 rounded text-xs text-white ${getFloodRiskDisplay(site).bgColor}`}
                     >
-                      {site.waterLevelStatus?.toUpperCase() || 'UNKNOWN'}
+                      {getFloodRiskDisplay(site).label}
                     </span>
                   </div>
                   {site.gageHeight && (
@@ -476,9 +639,24 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                       <strong>Gage Height:</strong> {formatWaterLevel(site.gageHeight)}
                     </div>
                   )}
+                  {site.floodStage && (
+                    <div>
+                      <strong>Flood Stage:</strong> {formatWaterLevel(site.floodStage)}
+                      {site.gageHeight && site.floodStage && (
+                        <span className="text-xs ml-1">
+                          ({((site.gageHeight / site.floodStage) * 100).toFixed(0)}% of flood stage)
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {site.streamflow && (
                     <div>
                       <strong>Streamflow:</strong> {formatWaterLevel(site.streamflow, 'cfs')}
+                    </div>
+                  )}
+                  {site.waterLevelStatus && (
+                    <div className="text-xs text-gray-600">
+                      <strong>USGS Status:</strong> {site.waterLevelStatus.toUpperCase()}
                     </div>
                   )}
                   <div>
@@ -495,7 +673,7 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                     </div>
                     <WaterLevelChart 
                       data={site.chartData} 
-                      color={getChartColor(site.waterLevelStatus || 'unknown')}
+                      color={getChartColor(site)}
                       height={96}
                       forTooltip={true}
                     />
@@ -518,17 +696,9 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                   <div>
                     <strong>Status:</strong>{' '}
                     <span
-                      className={`inline-block px-2 py-1 rounded text-xs text-white ${
-                        site.waterLevelStatus === 'high'
-                          ? 'bg-red-600'
-                          : site.waterLevelStatus === 'normal'
-                          ? 'bg-green-600'
-                          : site.waterLevelStatus === 'low'
-                          ? 'bg-yellow-600'
-                          : 'bg-gray-600'
-                      }`}
+                      className={`inline-block px-2 py-1 rounded text-xs text-white ${getFloodRiskDisplay(site).bgColor}`}
                     >
-                      {site.waterLevelStatus?.toUpperCase() || 'UNKNOWN'}
+                      {getFloodRiskDisplay(site).label}
                     </span>
                   </div>
                   {site.gageHeight && (
@@ -536,9 +706,24 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                       <strong>Gage Height:</strong> {formatWaterLevel(site.gageHeight)}
                     </div>
                   )}
+                  {site.floodStage && (
+                    <div>
+                      <strong>Flood Stage:</strong> {formatWaterLevel(site.floodStage)}
+                      {site.gageHeight && site.floodStage && (
+                        <span className="text-xs ml-1">
+                          ({((site.gageHeight / site.floodStage) * 100).toFixed(0)}% of flood stage)
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {site.streamflow && (
                     <div>
                       <strong>Streamflow:</strong> {formatWaterLevel(site.streamflow, 'cfs')}
+                    </div>
+                  )}
+                  {site.waterLevelStatus && (
+                    <div className="text-xs text-gray-600">
+                      <strong>USGS Status:</strong> {site.waterLevelStatus.toUpperCase()}
                     </div>
                   )}
                   <div>
@@ -555,7 +740,7 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                     </div>
                     <WaterLevelChart 
                       data={site.chartData} 
-                      color={getChartColor(site.waterLevelStatus || 'unknown')}
+                      color={getChartColor(site)}
                       showTooltip={true}
                       height={120}
                     />
@@ -578,11 +763,14 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
         <MapOverlayHandler sites={gaugeSitesVisible ? visibleSites : []} globalTrendHours={globalTrendHours} chartsVisible={chartsVisible} />
       </MapContainer>
       
-      <FloodPredictionPanel 
-        gaugeSites={sites}
-        waterways={waterways}
-        enabled={floodAwarenessEnabled}
-      />
+      {floodPanelVisible && (
+        <FloodPredictionPanel 
+          gaugeSites={sites}
+          waterways={waterways}
+          enabled={floodAwarenessEnabled}
+          onClose={() => onFloodPanelVisibilityChange?.(false)}
+        />
+      )}
     </div>
   );
 };

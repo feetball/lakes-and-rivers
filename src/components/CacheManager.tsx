@@ -106,7 +106,7 @@ const CacheManager: React.FC<CacheStatsProps> = ({ onClearCache }) => {
 
   if (!isExpanded) {
     return (
-      <div className="absolute top-4 right-4 z-[1000]">
+      <div className="absolute top-20 right-4 z-[1000]">
         <button
           onClick={() => setIsExpanded(true)}
           className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm shadow-lg"
@@ -119,7 +119,7 @@ const CacheManager: React.FC<CacheStatsProps> = ({ onClearCache }) => {
   }
 
   return (
-    <div className="absolute top-4 right-4 z-[1000] bg-white rounded-lg shadow-lg border p-4 min-w-72">
+    <div className="absolute top-20 right-4 z-[1000] bg-white rounded-lg shadow-lg border p-4 min-w-72">
       <div className="flex items-center justify-between mb-3">
         <h3 className="font-bold text-lg text-gray-800">Cache Management</h3>
         <button
