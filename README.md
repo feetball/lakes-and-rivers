@@ -40,16 +40,27 @@ Visit http://localhost:3000
 
 ### Production Deployment
 
-#### Prerequisites
+#### Railway.com (Recommended)
+[![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/new)
+
+1. Connect your GitHub repository to Railway
+2. Add Redis database addon
+3. Deploy automatically with zero configuration
+
+See [RAILWAY_DEPLOY.md](RAILWAY_DEPLOY.md) for detailed instructions.
+
+#### Docker Deployment (Alternative)
+
+##### Prerequisites
 - Docker and Docker Compose installed
 - Make sure ports 3000, 6379, and 80 are available
 
-#### Deploy with automatic setup
+##### Deploy with automatic setup
 ```bash
 ./deploy.sh
 ```
 
-#### Manual deployment
+##### Manual deployment
 ```bash
 # Build and start all services
 docker compose up -d
