@@ -92,8 +92,8 @@ docker run -p 3000:3000 -v $(pwd):/app lakes-rivers-dev
 
 1. Clone the repository:
    \`\`\`bash
-   git clone <repository-url>
-   cd lakes_and_rivers
+   git clone https://github.com/YOUR_USERNAME/lakes-and-rivers.git
+   cd lakes-and-rivers
    \`\`\`
 
 2. Install dependencies:
