@@ -16,12 +16,21 @@
 3. Select "Deploy from GitHub repo"
 4. Choose your `lakes-and-rivers` repository
 
-### 3. Add Redis Database
-1. In your Railway project dashboard
-2. Click "New" → "Database" → "Add Redis"
-3. Railway will automatically set the `REDIS_URL` environment variable
+### 3. Add Redis Database (CRITICAL STEP)
+⚠️ **This step is required** - your app will fail without it!
 
-### 4. Environment Variables
+1. In your Railway project dashboard
+2. Click **"+ New"** → **"Database"** → **"Add Redis"**
+3. Railway will automatically set the `REDIS_URL` environment variable
+4. Wait for Redis service to show as "Active"
+5. Your app will automatically redeploy and connect to Redis
+
+### 4. Verify Setup
+Check that your project dashboard shows:
+```
+├── lakes-and-rivers (App Service)
+└── Redis (Database Service)
+```
 Railway will automatically detect and set most variables. Verify these are set:
 
 ```bash

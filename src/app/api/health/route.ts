@@ -6,11 +6,16 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
+    // Check if REDIS_URL is configured
+    const redisConfigured = !!process.env.REDIS_URL;
+    
     // Check Redis connection
     const redis = await getRedisClient();
     let redisStatus = 'disconnected';
     
-    if (redis) {
+    if (!redisConfigured) {
+      redisStatus = 'not_configured';
+    } else if (redis) {
       try {
         await redis.ping();
         redisStatus = 'connected';
@@ -25,6 +30,10 @@ export async function GET() {
       services: {
         redis: redisStatus,
         app: 'running'
+      },
+      config: {
+        redis_url_configured: redisConfigured,
+        node_env: process.env.NODE_ENV || 'development'
       }
     });
   } catch (error) {

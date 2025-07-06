@@ -4,12 +4,26 @@ let redis: any = null;
 
 export async function getRedisClient() {
   if (!redis) {
-    try {    redis = createClient({
-      url: process.env.REDIS_URL || 'redis://localhost:6379',
-      socket: {
-        connectTimeout: 5000,
-      },
-    });
+    // Skip Redis connection if no REDIS_URL is provided (Railway will set this when Redis addon is added)
+    if (!process.env.REDIS_URL) {
+      console.log('No REDIS_URL found, running without cache');
+      return null;
+    }
+    
+    try {
+      redis = createClient({
+        url: process.env.REDIS_URL,
+        socket: {
+          connectTimeout: 10000,
+          reconnectStrategy: (retries) => {
+            if (retries > 3) {
+              console.log('Redis max retries exceeded, disabling cache');
+              return false;
+            }
+            return Math.min(retries * 100, 3000);
+          },
+        },
+      });
 
       redis.on('error', (err: any) => {
         console.log('Redis Client Error', err);
