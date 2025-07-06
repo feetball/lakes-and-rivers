@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import { WaterSite } from '@/types/water';
 import { USGSService } from '@/services/usgs';
@@ -8,12 +8,16 @@ import { WaterwayService, Waterway } from '@/services/waterways';
 import CacheManager from './CacheManager';
 import DraggableBox from './DraggableBox';
 
-// Dynamically import MapView to avoid SSR issues
+// Dynamically import MapView to avoid SSR issues with higher priority
 const DynamicMap = dynamic(() => import('../components/MapView'), {
   ssr: false,
   loading: () => (
-    <div className="flex items-center justify-center h-screen">
-      <div className="text-lg">Loading map...</div>
+    <div className="flex items-center justify-center h-screen bg-blue-50">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+        <p className="mt-4 text-lg font-medium text-gray-700">Loading water data...</p>
+        <p className="mt-1 text-sm text-gray-500">Fetching latest gauge readings</p>
+      </div>
     </div>
   ),
 }) as React.ComponentType<{ 
@@ -37,10 +41,29 @@ export default function WaterMap() {
     gaugeSitesVisible: true
   });
 
+  // Memoize the trend hours change handler to prevent unnecessary re-renders
+  const handleTrendHoursChange = useCallback((hours: number) => {
+    setGlobalTrendHours(hours);
+  }, []);
+
+  // Memoize visibility stats handler
+  const handleVisibilityStatsChange = useCallback((stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => {
+    setVisibilityStats(stats);
+  }, []);
+
+  // Load data only when trend hours changes, with debouncing
   useEffect(() => {
-    loadWaterSites();
+    const timeoutId = setTimeout(() => {
+      loadWaterSites();
+    }, 300); // Debounce API calls by 300ms
+
+    return () => clearTimeout(timeoutId);
+  }, [globalTrendHours]);
+
+  // Load waterways only once on mount (they don't change with trend hours)
+  useEffect(() => {
     loadWaterways();
-  }, [globalTrendHours]); // Reload when time range changes
+  }, []);
 
   const loadWaterways = async () => {
     try {
@@ -69,21 +92,33 @@ export default function WaterMap() {
       setLoading(true);
       setError(null);
       
-      // Load sites within 100-mile radius of Austin, TX (about 1.45 degrees)
-      // Austin coordinates: 30.2672, -97.7431
+      // Load sites within 70-mile radius of Austin for better performance
+      // Austin coordinates: 30.2672, -97.7431 
       const bbox = {
-        north: parseFloat((30.2672 + 1.45).toFixed(6)),  // ~31.717
-        south: parseFloat((30.2672 - 1.45).toFixed(6)),  // ~28.817
-        east: parseFloat((-97.7431 + 1.45).toFixed(6)),  // ~-96.293
-        west: parseFloat((-97.7431 - 1.45).toFixed(6))   // ~-99.193
+        north: parseFloat((30.2672 + 1.0).toFixed(6)),  // ~31.267 (reduced from 1.45)
+        south: parseFloat((30.2672 - 1.0).toFixed(6)),  // ~29.267 (reduced from 1.45) 
+        east: parseFloat((-97.7431 + 1.0).toFixed(6)),  // ~-96.743 (reduced from 1.45)
+        west: parseFloat((-97.7431 - 1.0).toFixed(6))   // ~-98.743 (reduced from 1.45)
       };
       
-      console.log('Loading water sites for 100-mile radius around Austin with bbox:', bbox);
+      console.log('Loading water sites for 70-mile radius around Austin (optimized for performance):', bbox);
       
       const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);
       
-      console.log('Received sites from USGS:', waterSites);
-      console.log('Sites with chart data:', waterSites.filter(site => site.chartData && site.chartData.length > 0));
+      // Filter and prioritize sites for better performance
+      const activeSites = waterSites
+        .filter(site => site.chartData && site.chartData.length > 0) // Only sites with chart data
+        .sort((a, b) => {
+          // Prioritize by last updated time (most recent first)
+          const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+          const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+          return bTime - aTime;
+        })
+        .slice(0, 150); // Limit to 150 most active sites for performance
+      
+      setSites(activeSites);
+      console.log(`Performance optimization: Showing ${activeSites.length} most active sites (from ${waterSites.length} total)`);
+      console.log('Sites with chart data:', activeSites.length);
       
       // If no sites found, add some test sites for demonstration
       if (waterSites.length === 0) {
@@ -230,14 +265,6 @@ export default function WaterMap() {
   const handleStateChange = async (state: string) => {
     setSelectedState(state);
     // You could implement state-specific loading here
-  };
-
-  const handleTrendHoursChange = (hours: number) => {
-    setGlobalTrendHours(hours);
-  };
-
-  const handleVisibilityStatsChange = (stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => {
-    setVisibilityStats(stats);
   };
 
   if (loading) {
