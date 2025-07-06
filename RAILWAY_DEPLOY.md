@@ -31,13 +31,19 @@ Check that your project dashboard shows:
 ├── lakes-and-rivers (App Service)
 └── Redis (Database Service)
 ```
-Railway will automatically detect and set most variables. Verify these are set:
+Railway will automatically detect and set most variables. **Make sure to set these:**
 
 ```bash
 NODE_ENV=production
 PORT=3000
 REDIS_URL=redis://... (automatically set by Railway Redis addon)
+
+# Cache Admin Credentials (IMPORTANT - SET THESE!)
+ADMIN_USERNAME=admin
+ADMIN_PASSWORD=your-very-secure-password-here
 ```
+
+**⚠️ Security Note:** Set a strong `ADMIN_PASSWORD` to protect the cache admin interface at `/admin/cache.html`
 
 ### 5. Custom Domain (Optional)
 1. Go to your service settings

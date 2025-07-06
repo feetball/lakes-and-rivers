@@ -165,6 +165,31 @@ The application uses Redis for intelligent caching to improve performance:
 
 ### Cache Management
 
+The application includes an admin interface for cache management:
+
+**Web Interface:**
+- Visit `/admin/cache.html` (requires authentication)
+- Username: `admin` (default)
+- Password: Set via `ADMIN_PASSWORD` environment variable
+
+**API Endpoints:**
+\`\`\`bash
+# Get cache status (requires Basic Auth)
+GET /api/admin/cache
+
+# Clear specific cache types
+POST /api/admin/cache
+{
+  "action": "clear_waterways"    # or "clear_usgs", "clear_all"
+}
+\`\`\`
+
+**Available Actions:**
+- `clear_waterways` - Clear waterway/river data cache (safe)
+- `clear_usgs` - Clear USGS gauge data cache (safe)  
+- `clear_all` - Clear entire cache (use with caution)
+
+**Redis CLI Commands:**
 \`\`\`bash
 # Monitor cache activity
 redis-cli monitor
