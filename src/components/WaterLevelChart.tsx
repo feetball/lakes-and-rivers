@@ -1,7 +1,6 @@
 'use client';
 
-import React from 'react';
-import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
+import React, { useEffect, useState } from 'react';
 
 interface WaterLevelChartProps {
   data: Array<{
@@ -11,86 +10,109 @@ interface WaterLevelChartProps {
   color?: string;
   showTooltip?: boolean;
   height?: number;
+  forTooltip?: boolean;
 }
 
 const WaterLevelChart: React.FC<WaterLevelChartProps> = ({ 
   data, 
   color = '#3b82f6', 
   showTooltip = false,
-  height = 80 
-}) => {
-  if (!data || data.length === 0) {
+  height = 80,
+  forTooltip = false
+}: WaterLevelChartProps) => {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
     return (
-      <div className={`h-${height/4} w-full flex items-center justify-center text-xs text-gray-500`}
+      <div className="w-full flex items-center justify-center text-xs text-gray-500"
            style={{ height: `${height}px` }}>
-        No chart data available
+        Loading...
       </div>
     );
   }
 
-  // Format data for recharts
-  const chartData = data.map(point => ({
-    time: new Date(point.time).toLocaleTimeString('en-US', { 
-      hour: 'numeric', 
-      minute: '2-digit',
-      hour12: false 
-    }),
-    value: point.value,
-    timestamp: point.time,
-    formattedValue: `${point.value.toFixed(2)} ft`,
-    formattedTime: new Date(point.time).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      hour12: true
-    })
-  }));
+  if (!data || data.length === 0) {
+    return (
+      <div className="w-full flex items-center justify-center text-xs text-gray-500"
+           style={{ height: `${height}px` }}>
+        No data
+      </div>
+    );
+  }
 
-  // Custom tooltip component
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      const data = payload[0].payload;
-      return (
-        <div className="bg-white p-2 border border-gray-300 rounded shadow-lg text-xs">
-          <p className="font-semibold">{data.formattedTime}</p>
-          <p className="text-blue-600">{data.formattedValue}</p>
-        </div>
-      );
-    }
-    return null;
-  };
+  // Simple SVG chart that always works
+  const values = data.map((d: { time: number; value: number }) => d.value);
+  const minValue = Math.min(...values);
+  const maxValue = Math.max(...values);
+  const range = maxValue - minValue || 1;
+  
+  const points = data.map((point: { time: number; value: number }, index: number) => {
+    const x = (index / (data.length - 1)) * 100;
+    const y = ((maxValue - point.value) / range) * 70 + 15; // More padding
+    return `${x},${y}`;
+  }).join(' ');
+
+  const currentValue = data[data.length - 1]?.value;
+  const previousValue = data[data.length - 2]?.value;
+  const trend = currentValue > previousValue ? '↗️' : currentValue < previousValue ? '↘️' : '→';
 
   return (
-    <div className="w-full" style={{ height: `${height}px` }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <LineChart 
-          data={chartData} 
-          margin={{ top: 5, right: 5, left: 5, bottom: 5 }}
-        >
-          <XAxis 
-            dataKey="time" 
-            tick={false}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis 
-            tick={false}
-            axisLine={false}
-            tickLine={false}
-            domain={['dataMin - 0.1', 'dataMax + 0.1']}
-          />
-          {showTooltip && <Tooltip content={<CustomTooltip />} />}
-          <Line 
-            type="monotone" 
-            dataKey="value" 
-            stroke={color} 
-            strokeWidth={1.5}
-            dot={false}
-            activeDot={{ r: 3, fill: color, stroke: '#fff', strokeWidth: 2 }}
-          />
-        </LineChart>
-      </ResponsiveContainer>
+    <div className="w-full relative" style={{ height: `${height}px` }}>
+      <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0">
+        {/* Background grid */}
+        {!forTooltip && (
+          <>
+            <defs>
+              <pattern id="grid" width="10" height="10" patternUnits="userSpaceOnUse">
+                <path d="M 10 0 L 0 0 0 10" fill="none" stroke="#f0f0f0" strokeWidth="0.5"/>
+              </pattern>
+            </defs>
+            <rect width="100" height="100" fill="url(#grid)" />
+          </>
+        )}
+        
+        {/* Chart line */}
+        <polyline
+          fill="none"
+          stroke={color}
+          strokeWidth={forTooltip ? "2" : "2.5"}
+          points={points}
+          vectorEffect="non-scaling-stroke"
+          className="drop-shadow-sm"
+        />
+        
+        {/* Data points */}
+        {!forTooltip && data.map((point: { time: number; value: number }, index: number) => {
+          const x = (index / (data.length - 1)) * 100;
+          const y = ((maxValue - point.value) / range) * 70 + 15;
+          return (
+            <circle
+              key={index}
+              cx={x}
+              cy={y}
+              r="1.5"
+              fill={color}
+              stroke="white"
+              strokeWidth="0.5"
+              vectorEffect="non-scaling-stroke"
+              className="drop-shadow-sm"
+            />
+          );
+        })}
+      </svg>
+      
+      {/* Value display */}
+      {forTooltip && (
+        <div className="absolute inset-0 flex items-center justify-center">
+          <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium shadow-sm border">
+            {currentValue?.toFixed(2)} ft {trend}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

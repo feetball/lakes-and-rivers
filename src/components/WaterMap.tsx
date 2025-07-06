@@ -82,7 +82,8 @@ export default function WaterMap() {
       
       const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);
       
-      console.log('Received sites:', waterSites);
+      console.log('Received sites from USGS:', waterSites);
+      console.log('Sites with chart data:', waterSites.filter(site => site.chartData && site.chartData.length > 0));
       
       // If no sites found, add some test sites for demonstration
       if (waterSites.length === 0) {
@@ -92,12 +93,14 @@ export default function WaterMap() {
           const data = [];
           const now = Date.now();
           const totalPoints = Math.max(globalTrendHours * 6, 6); // 6 points per hour (10-minute intervals)
+          console.log(`Generating sample chart data with ${totalPoints} points for ${globalTrendHours} hours`);
           for (let i = totalPoints - 1; i >= 0; i--) {
             data.push({
               time: now - (i * 10 * 60 * 1000), // 10-minute intervals
               value: baseLevel + (Math.random() - 0.5) * 0.5 // Small random variation
             });
           }
+          console.log('Generated chart data:', data.slice(0, 3), '... (showing first 3 points)');
           return data;
         };
 

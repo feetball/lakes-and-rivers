@@ -34,6 +34,27 @@
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
 }
 
+/* Ensure charts render properly in tooltips */
+.custom-tooltip .leaflet-tooltip-content svg {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+}
+
+.custom-tooltip .recharts-wrapper {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+}
+
+/* Fix for recharts responsive container in tooltips */
+.leaflet-tooltip .recharts-responsive-container {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  min-height: 96px !important;
+}
+
 /* Mobile optimizations for popups */
 @media (max-width: 768px) {
   .custom-popup {

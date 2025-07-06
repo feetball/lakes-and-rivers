@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { LineChart, Line, ResponsiveContainer, ReferenceLine, Legend } from 'recharts';
 import { WaterSite } from '@/types/water';
 
@@ -15,10 +15,18 @@ interface MapChartOverlayProps {
 
 const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gaugePosition, index, totalSites, globalTrendHours }) => {
   const chartRef = useRef<HTMLDivElement>(null);
+  const [isClient, setIsClient] = useState(false);
 
-  if (!site.chartData || site.chartData.length === 0) {
+  useEffect(() => {
+    setIsClient(true);
+    console.log('MapChartOverlay mounted for site:', site.name);
+  }, []);
+
+  if (!isClient || !site.chartData || site.chartData.length === 0) {
     return null;
   }
+
+  console.log('MapChartOverlay rendering for site:', site.name, 'with', site.chartData.length, 'data points');
 
   // Enhanced collision-avoiding positioning algorithm
   const calculateOffset = () => {

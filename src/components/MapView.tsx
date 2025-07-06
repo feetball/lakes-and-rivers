@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import { createPortal } from 'react-dom';
+import dynamic from 'next/dynamic';
 import L from 'leaflet';
 import { WaterSite } from '@/types/water';
 import { Waterway } from '@/services/waterways';
@@ -483,12 +484,13 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                 {site.chartData && site.chartData.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <div className="text-xs font-semibold text-gray-600 mb-1">
-                      Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level
+                      Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Chart data: {site.chartData.length} points)
                     </div>
                     <WaterLevelChart 
                       data={site.chartData} 
                       color={getChartColor(site.waterLevelStatus || 'unknown')}
                       height={96}
+                      forTooltip={true}
                     />
                   </div>
                 )}
@@ -542,7 +544,7 @@ const MapView: React.FC<MapViewProps> = ({ sites, waterways, globalTrendHours, o
                 {site.chartData && site.chartData.length > 0 && (
                   <div className="mt-3 pt-2 border-t border-gray-200">
                     <div className="text-xs font-semibold text-gray-600 mb-2">
-                      Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Detailed View)
+                      Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Detailed View - {site.chartData.length} points)
                     </div>
                     <WaterLevelChart 
                       data={site.chartData} 
