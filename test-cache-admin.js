@@ -9,8 +9,8 @@ const https = require('https');
 const http = require('http');
 
 const baseUrl = process.argv[2] || 'http://localhost:3000';
-const username = process.argv[3] || 'admin';
-const password = process.argv[4] || 'test-password';
+const username = process.argv[3] || 'feetball';
+const password = process.argv[4] || '0deacon5';
 
 const auth = Buffer.from(`${username}:${password}`).toString('base64');
 

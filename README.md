@@ -169,7 +169,7 @@ The application includes an admin interface for cache management:
 
 **Web Interface:**
 - Visit `/admin/cache.html` (requires authentication)
-- Username: `admin` (default)
+- Username: `feetball` (default)
 - Password: Set via `ADMIN_PASSWORD` environment variable
 
 **API Endpoints:**

@@ -18,7 +18,7 @@ function authenticate(request: NextRequest): boolean {
     const [username, password] = credentials.split(':');
 
     // Check against environment variables
-    const adminUsername = process.env.ADMIN_USERNAME || 'admin';
+    const adminUsername = process.env.ADMIN_USERNAME || 'feetball';
     const adminPassword = process.env.ADMIN_PASSWORD;
 
     if (!adminPassword) {
