@@ -94,7 +94,7 @@
         <div id="auth-section" class="auth-form">
             <h3>Authentication Required</h3>
             <div>
-                <input type="text" id="username" placeholder="Username" value="feetball">
+                <input type="text" id="username" placeholder="Username">
                 <input type="password" id="password" placeholder="Password">
                 <button onclick="authenticate()" class="safe">Login</button>
             </div>
@@ -233,16 +233,10 @@
             }
         }
 
-        // Auto-focus password field if username is already filled
+        // Auto-focus username field
         document.addEventListener('DOMContentLoaded', () => {
             const usernameField = document.getElementById('username');
-            const passwordField = document.getElementById('password');
-            
-            if (usernameField.value) {
-                passwordField.focus();
-            } else {
-                usernameField.focus();
-            }
+            usernameField.focus();
         });
     </script>
 </body>
