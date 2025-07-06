@@ -1,6 +1,6 @@
-# USGS Water Levels Map
+# DK's Texas Lake And River Flood Overview
 
-A real-time water level monitoring application with interactive chart overlays and comprehensive caching.
+A comprehensive real-time flood monitoring system for Texas lakes and rivers, featuring interactive maps, water level charts, and intelligent flood awareness indicators.
 
 ## Features
 
@@ -103,8 +103,8 @@ docker run -p 3000:3000 -v $(pwd):/app lakes-rivers-dev
 
 1. Clone the repository:
    \`\`\`bash
-   git clone https://github.com/feetball/lakes-and-rivers.git
-   cd lakes-and-rivers
+   git clone https://github.com/feetball/dk-texas-flood-overview.git
+   cd dk-texas-flood-overview
    \`\`\`
 
 2. Install dependencies:

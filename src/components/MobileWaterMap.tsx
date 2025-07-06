@@ -129,7 +129,7 @@ export default function MobileWaterMap() {
           {/* Main Header Row */}
           <div className={`flex items-center justify-between ${isMobile ? 'mb-2' : ''}`}>
             <h1 className={`font-bold text-gray-800 ${isMobile ? 'text-base' : 'text-2xl'}`}>
-              {isMobile ? 'USGS Water' : 'USGS Water Levels - Central Texas'}
+              {isMobile ? 'DK Texas Water' : 'DK\'s Texas Lake And River Flood Overview'}
             </h1>
             
             {isMobile ? (

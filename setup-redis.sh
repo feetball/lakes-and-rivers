@@ -2,7 +2,7 @@
 
 # Redis Setup Script for Local Development
 
-echo "🚀 Setting up Redis for the USGS Water Levels app..."
+echo "🚀 Setting up Redis for DK's Texas Lake And River Flood Overview..."
 
 # Check if Redis is already installed
 if command -v redis-server >/dev/null 2>&1; then
@@ -54,7 +54,7 @@ sleep 2
 if redis-cli ping | grep -q "PONG"; then
     echo "✅ Redis is running and accessible!"
     echo ""
-    echo "🎉 Setup complete! Your USGS Water Levels app now has Redis caching enabled."
+    echo "🎉 Setup complete! DK's Texas Lake And River Flood Overview now has Redis caching enabled."
     echo ""
     echo "📝 Cache Configuration:"
     echo "   • Waterways: Cached for 24 hours"

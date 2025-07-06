@@ -270,7 +270,7 @@ export default function WaterMap() {
       <div className="absolute top-0 left-0 right-0 z-[1000] bg-white shadow-md">
         <div className="flex items-center justify-between p-4">
           <h1 className="text-2xl font-bold text-gray-800">
-            USGS Water Levels - Central Texas
+            DK's Texas Lake And River Flood Overview
             {visibilityStats.gaugeSitesVisible && (
               <span className="ml-3 text-sm font-normal text-red-600">
                 🌊 Flood conditions detected

@@ -14,7 +14,7 @@
 1. Go to Railway dashboard
 2. Click "New Project"
 3. Select "Deploy from GitHub repo"
-4. Choose your `lakes-and-rivers` repository
+4. Choose your `dk-texas-flood-overview` repository
 
 ### 3. Add Redis Database (CRITICAL STEP)
 ⚠️ **This step is required** - your app will fail without it!
@@ -28,7 +28,7 @@
 ### 4. Verify Setup
 Check that your project dashboard shows:
 ```
-├── lakes-and-rivers (App Service)
+├── dk-texas-flood-overview (App Service)
 └── Redis (Database Service)
 ```
 Railway will automatically detect and set most variables. **Make sure to set these:**

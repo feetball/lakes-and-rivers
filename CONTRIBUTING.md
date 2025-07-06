@@ -7,8 +7,8 @@ Thank you for your interest in contributing to the Lakes and Rivers project! Thi
 1. Fork the repository on GitHub
 2. Clone your fork locally:
    ```bash
-   git clone https://github.com/YOUR_USERNAME/lakes-and-rivers.git
-   cd lakes-and-rivers
+   git clone https://github.com/YOUR_USERNAME/dk-texas-flood-overview.git
+   cd dk-texas-flood-overview
    ```
 3. Install dependencies:
    ```bash

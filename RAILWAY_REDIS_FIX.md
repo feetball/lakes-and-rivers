@@ -13,7 +13,7 @@ I've already fixed your `.env.production` file to not override Railway's Redis U
 
 ### Step 2: Add Redis Service to Railway
 1. Go to [railway.app](https://railway.app)
-2. Open your `lakes-and-rivers` project
+2. Open your `dk-texas-flood-overview` project
 3. Click the **"+"** button or **"New"**
 4. Select **"Database"** → **"Add Redis"**
 5. Railway will create a Redis service and generate a `REDIS_URL` environment variable
@@ -45,7 +45,7 @@ I've already fixed your `.env.production` file to not override Railway's Redis U
 ### Railway Dashboard Check:
 ```
 Your Project Should Show:
-├── lakes-and-rivers (your app)
+├── dk-texas-flood-overview (your app)
 └── Redis (database service)
 ```
 

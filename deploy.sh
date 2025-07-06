@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Production Deployment Script for USGS Water Levels App
+# Production Deployment Script for DK's Texas Lake And River Flood Overview
 
 set -e
 

@@ -6,8 +6,8 @@ import 'leaflet/dist/leaflet.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'USGS Water Levels',
-  description: 'Real-time water levels for rivers and lakes',
+  title: "DK's Texas Lake And River Flood Overview",
+  description: 'Real-time water levels and flood monitoring for Texas lakes and rivers',
   viewport: {
     width: 'device-width',
     initialScale: 1,
