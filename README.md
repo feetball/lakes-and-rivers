@@ -103,7 +103,7 @@ docker run -p 3000:3000 -v $(pwd):/app lakes-rivers-dev
 
 1. Clone the repository:
    \`\`\`bash
-   git clone https://github.com/YOUR_USERNAME/lakes-and-rivers.git
+   git clone https://github.com/feetball/lakes-and-rivers.git
    cd lakes-and-rivers
    \`\`\`
 
