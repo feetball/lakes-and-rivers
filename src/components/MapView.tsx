@@ -28,6 +28,7 @@ interface MapViewProps {
   globalTrendHours: number;
   onTrendHoursChange: (hours: number) => void;
   onVisibilityStatsChange?: (stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => void;
+  onMapBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
   chartControlsVisible?: boolean;
   floodPanelVisible?: boolean;
   onChartControlsVisibilityChange?: (visible: boolean) => void;
@@ -45,33 +46,16 @@ const MapOverlayHandler: React.FC<{ sites: WaterSite[]; globalTrendHours: number
   }, []);
 
   // Only show sites within 100 miles of Austin, and only display overlays for those in the viewport
-  const AUSTIN_LAT = 30.2672;
-  const AUSTIN_LON = -97.7431;
-  const RADIUS_MILES = 100;
-  // Haversine formula
-  function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
-    const R = 3958.8; // Earth radius in miles
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  // Only consider sites within 300 miles of Austin, but always re-filter from all sites on map move
   const [visibleSites, setVisibleSites] = useState<WaterSite[]>([]);
   const [layoutKey, setLayoutKey] = useState(0);
 
   React.useEffect(() => {
     function updateVisibleSites() {
       const bounds = map.getBounds();
-      setVisibleSites(
-        (Array.isArray(sites) ? sites : []).filter(site =>
-          haversine(AUSTIN_LAT, AUSTIN_LON, site.latitude, site.longitude) <= RADIUS_MILES &&
-          bounds.contains([site.latitude, site.longitude])
-        )
+      const filteredSites = (Array.isArray(sites) ? sites : []).filter(site =>
+        bounds.contains([site.latitude, site.longitude])
       );
+      setVisibleSites(filteredSites);
       setLayoutKey(k => k + 1);
     }
     updateVisibleSites();
@@ -259,6 +243,7 @@ const MapView: React.FC<MapViewProps> = ({
   globalTrendHours, 
   onTrendHoursChange, 
   onVisibilityStatsChange,
+  onMapBoundsChange,
   chartControlsVisible = true,
   floodPanelVisible = true,
   onChartControlsVisibilityChange,
@@ -344,22 +329,6 @@ const MapView: React.FC<MapViewProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Austin-based filtering constants
-  const AUSTIN_LAT = 30.2672;
-  const AUSTIN_LON = -97.7431;
-  const RADIUS_MILES = 100;
-
-  // Haversine formula
-  function haversine(lat1: number, lon1: number, lat2: number, lon2: number): number {
-    const toRad = (deg: number) => (deg * Math.PI) / 180;
-    const R = 3958.8; // Earth radius in miles
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a = Math.sin(dLat/2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon/2) ** 2;
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
   // Helper: check if a site is within bounds
   const isSiteInBounds = (site: WaterSite, bounds: any) => {
     const lat = site.latitude;
@@ -375,13 +344,14 @@ const MapView: React.FC<MapViewProps> = ({
   useEffect(() => {
     if (!mapRef.current) return;
     const map = mapRef.current;
-    const updateVisibleSites = () => {
+    
+    const updateVisibleSitesAndBounds = () => {
       const bounds = map.getBounds();
       const filteredSites = (Array.isArray(sites) ? sites : []).filter(site =>
-        haversine(AUSTIN_LAT, AUSTIN_LON, site.latitude, site.longitude) <= RADIUS_MILES &&
         isSiteInBounds(site, bounds)
       );
-      console.log(`Total sites: ${sites.length}, Within 100mi of Austin: ${sites.filter(site => haversine(AUSTIN_LAT, AUSTIN_LON, site.latitude, site.longitude) <= RADIUS_MILES).length}, Visible: ${filteredSites.length}`);
+      
+      console.log(`Total sites: ${sites.length}, Visible: ${filteredSites.length}`);
       setVisibleSites(filteredSites);
       
       // Update visibility stats
@@ -392,13 +362,26 @@ const MapView: React.FC<MapViewProps> = ({
           gaugeSitesVisible
         });
       }
+      
+      // Notify parent component about bounds change for dynamic data loading
+      if (onMapBoundsChange) {
+        const boundsObj = {
+          north: bounds.getNorth(),
+          south: bounds.getSouth(),
+          east: bounds.getEast(),
+          west: bounds.getWest()
+        };
+        onMapBoundsChange(boundsObj);
+      }
     };
-    map.on('moveend zoomend', updateVisibleSites);
-    updateVisibleSites();
+    
+    map.on('moveend zoomend', updateVisibleSitesAndBounds);
+    updateVisibleSitesAndBounds();
+    
     return () => {
-      map.off('moveend zoomend', updateVisibleSites);
+      map.off('moveend zoomend', updateVisibleSitesAndBounds);
     };
-  }, [sites, gaugeSitesVisible, onVisibilityStatsChange]);
+  }, [sites, gaugeSitesVisible, onVisibilityStatsChange, onMapBoundsChange]);
 
   // Update visibility stats when gauge sites visibility changes
   useEffect(() => {

@@ -25,123 +25,19 @@ export class USGSService {
 
       console.log('Fetching USGS data from API route:', url);
       
-      const response = await axios.get<USGSResponse>(url);
+      const response = await axios.get(url);
       
       console.log('API response:', response.data);
       
-      if (!response.data?.value?.timeSeries) {
-        console.log('No timeSeries data found in response');
+      // The API now returns processed sites data
+      if (!response.data?.sites) {
+        console.log('No sites data found in response');
         return [];
       }
 
-      console.log('Found', response.data.value.timeSeries.length, 'time series records');
+      console.log('Found', response.data.sites.length, 'processed sites');
 
-      const sites: WaterSite[] = response.data.value.timeSeries.map((timeSeries: any) => {
-        const sourceInfo = timeSeries.sourceInfo;
-        const siteCode = sourceInfo.siteCode[0]?.value || '';
-        const location = sourceInfo.geoLocation.geogLocation;
-        
-        // Get the most recent value and historical data
-        const values = timeSeries.values[0]?.value || [];
-        const latestValue = values[values.length - 1];
-        
-        // Process chart data based on requested hours
-        const chartData = values
-          .filter((v: any) => v.value !== '-999999')
-          .map((v: any) => ({
-            time: new Date(v.dateTime).getTime(),
-            value: parseFloat(v.value)
-          }))
-          .slice(-Math.min(values.length, Math.ceil(hours * 6))); // Approximate points based on hours (10-min intervals)
-        
-        let waterLevel: number | undefined;
-        let waterLevelStatus: 'high' | 'normal' | 'low' | 'unknown' = 'unknown';
-        let siteType: 'river' | 'lake' | 'reservoir' | 'stream' = 'river'; // Default to river
-        
-        // Determine site type based on variable name and site name
-        const siteName = sourceInfo.siteName.toLowerCase();
-        const variableName = timeSeries.variable.variableName.toLowerCase();
-        
-        if (siteName.includes('lake') || siteName.includes('reservoir') || 
-            variableName.includes('lake') || variableName.includes('reservoir') || 
-            variableName.includes('elevation') || variableName.includes('storage')) {
-          siteType = siteName.includes('reservoir') ? 'reservoir' : 'lake';
-        }
-        
-        if (latestValue && latestValue.value !== '-999999') {
-          waterLevel = parseFloat(latestValue.value);
-          
-          // Enhanced classification based on site type and variable
-          if (variableName.includes('gage height') || variableName.includes('elevation')) {
-            if (siteType === 'lake' || siteType === 'reservoir') {
-              // For lake/reservoir elevation, use different thresholds
-              if (waterLevel > 500) waterLevelStatus = 'normal'; // Most lake elevations are in hundreds of feet
-              else if (waterLevel > 200) waterLevelStatus = 'low';
-              else waterLevelStatus = 'low';
-            } else {
-              // For river gage height, use existing logic
-              if (waterLevel > 15) waterLevelStatus = 'high';
-              else if (waterLevel > 2) waterLevelStatus = 'normal';
-              else waterLevelStatus = 'low';
-            }
-          } else if (variableName.includes('streamflow')) {
-            // For streamflow, classify based on typical ranges
-            if (waterLevel > 1000) waterLevelStatus = 'high';
-            else if (waterLevel > 100) waterLevelStatus = 'normal';
-            else waterLevelStatus = 'low';
-          } else if (variableName.includes('storage')) {
-            // For reservoir storage, classify based on capacity
-            if (waterLevel > 50000) waterLevelStatus = 'high';
-            else if (waterLevel > 10000) waterLevelStatus = 'normal';
-            else waterLevelStatus = 'low';
-          }
-        }
-
-        return {
-          id: siteCode,
-          name: sourceInfo.siteName,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          waterLevel,
-          waterLevelStatus,
-          lastUpdated: latestValue?.dateTime,
-          chartData,
-          siteType, // Add site type to the returned data
-          ...(variableName.includes('gage height') && {
-            gageHeight: waterLevel
-          }),
-          ...(variableName.includes('streamflow') && {
-            streamflow: waterLevel
-          }),
-          ...(variableName.includes('elevation') && {
-            lakeElevation: waterLevel
-          }),
-          ...(variableName.includes('storage') && {
-            reservoirStorage: waterLevel
-          })
-        };
-      });
-
-      // Remove duplicates by site ID
-      const uniqueSites = sites.reduce((acc, site) => {
-        const existing = acc.find(s => s.id === site.id);
-        if (!existing) {
-          acc.push(site);
-        } else {
-          // Merge data if we have multiple parameters for the same site
-          if (site.gageHeight) existing.gageHeight = site.gageHeight;
-          if (site.streamflow) existing.streamflow = site.streamflow;
-          if (site.lakeElevation) existing.lakeElevation = site.lakeElevation;
-          if (site.reservoirStorage) existing.reservoirStorage = site.reservoirStorage;
-          // Keep the most descriptive site type
-          if (site.siteType && (site.siteType === 'lake' || site.siteType === 'reservoir')) {
-            existing.siteType = site.siteType;
-          }
-        }
-        return acc;
-      }, [] as WaterSite[]);
-
-      return uniqueSites;
+      return response.data.sites;
     } catch (error) {
       console.error('Error fetching USGS data:', error);
       return [];

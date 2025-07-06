@@ -69,28 +69,146 @@ export async function GET(request: NextRequest) {
 
     const response = await axios.get(url);
     
-    // Process the response to extract site information for metadata caching
+    // Process the USGS response into site data format
+    let sites: any[] = [];
+    
     if (response.data?.value?.timeSeries) {
-      const sites = response.data.value.timeSeries.map((ts: any) => ({
-        id: ts.sourceInfo.siteCode[0]?.value || '',
-        name: ts.sourceInfo.siteName || '',
-        latitude: ts.sourceInfo.geoLocation.geogLocation.latitude,
-        longitude: ts.sourceInfo.geoLocation.geogLocation.longitude
-      })).filter((site: any) => site.id);
+      console.log('Processing', response.data.value.timeSeries.length, 'time series records');
+      
+      sites = response.data.value.timeSeries.map((timeSeries: any) => {
+        const sourceInfo = timeSeries.sourceInfo;
+        const siteCode = sourceInfo.siteCode[0]?.value || '';
+        const location = sourceInfo.geoLocation.geogLocation;
+        
+        // Get the most recent value and historical data
+        const values = timeSeries.values[0]?.value || [];
+        const latestValue = values[values.length - 1];
+        
+        // Process chart data based on requested hours
+        const chartData = values
+          .filter((v: any) => v.value !== '-999999')
+          .map((v: any) => ({
+            time: new Date(v.dateTime).getTime(),
+            value: parseFloat(v.value)
+          }))
+          .slice(-Math.min(values.length, Math.ceil(hours * 6))); // Approximate points based on hours (10-min intervals)
+        
+        let waterLevel: number | undefined;
+        let waterLevelStatus: 'high' | 'normal' | 'low' | 'unknown' = 'unknown';
+        let siteType: 'river' | 'lake' | 'reservoir' | 'stream' = 'river'; // Default to river
+        
+        // Determine site type based on variable name and site name
+        const siteName = sourceInfo.siteName.toLowerCase();
+        const variableName = timeSeries.variable.variableName.toLowerCase();
+        
+        if (siteName.includes('lake') || siteName.includes('reservoir') || 
+            variableName.includes('lake') || variableName.includes('reservoir') || 
+            variableName.includes('elevation') || variableName.includes('storage')) {
+          siteType = siteName.includes('reservoir') ? 'reservoir' : 'lake';
+        }
+        
+        if (latestValue && latestValue.value !== '-999999') {
+          waterLevel = parseFloat(latestValue.value);
+          
+          // Enhanced classification based on site type and variable
+          if (variableName.includes('gage height') || variableName.includes('elevation')) {
+            if (siteType === 'lake' || siteType === 'reservoir') {
+              // For lake/reservoir elevation, use different thresholds
+              if (waterLevel > 500) waterLevelStatus = 'normal'; // Most lake elevations are in hundreds of feet
+              else if (waterLevel > 200) waterLevelStatus = 'low';
+              else waterLevelStatus = 'low';
+            } else {
+              // For river gage height, use existing logic
+              if (waterLevel > 15) waterLevelStatus = 'high';
+              else if (waterLevel > 2) waterLevelStatus = 'normal';
+              else waterLevelStatus = 'low';
+            }
+          } else if (variableName.includes('streamflow')) {
+            // For streamflow, classify based on typical ranges
+            if (waterLevel > 1000) waterLevelStatus = 'high';
+            else if (waterLevel > 100) waterLevelStatus = 'normal';
+            else waterLevelStatus = 'low';
+          } else if (variableName.includes('storage')) {
+            // For reservoir storage, classify based on capacity
+            if (waterLevel > 50000) waterLevelStatus = 'high';
+            else if (waterLevel > 10000) waterLevelStatus = 'normal';
+            else waterLevelStatus = 'low';
+          }
+        }
+
+        return {
+          id: siteCode,
+          name: sourceInfo.siteName,
+          latitude: location.latitude,
+          longitude: location.longitude,
+          waterLevel,
+          waterLevelStatus,
+          lastUpdated: latestValue?.dateTime,
+          chartData,
+          siteType, // Add site type to the returned data
+          ...(variableName.includes('gage height') && {
+            gageHeight: waterLevel
+          }),
+          ...(variableName.includes('streamflow') && {
+            streamflow: waterLevel
+          }),
+          ...(variableName.includes('elevation') && {
+            lakeElevation: waterLevel
+          }),
+          ...(variableName.includes('storage') && {
+            reservoirStorage: waterLevel
+          })
+        };
+      });
+
+      // Remove duplicates by site ID and merge data
+      const uniqueSitesMap = new Map();
+      sites.forEach(site => {
+        if (uniqueSitesMap.has(site.id)) {
+          const existing = uniqueSitesMap.get(site.id);
+          // Merge data if we have multiple parameters for the same site
+          if (site.gageHeight) existing.gageHeight = site.gageHeight;
+          if (site.streamflow) existing.streamflow = site.streamflow;
+          if (site.lakeElevation) existing.lakeElevation = site.lakeElevation;
+          if (site.reservoirStorage) existing.reservoirStorage = site.reservoirStorage;
+          // Keep the most descriptive site type
+          if (site.siteType && (site.siteType === 'lake' || site.siteType === 'reservoir')) {
+            existing.siteType = site.siteType;
+          }
+          // Use chart data from the most recent/complete dataset
+          if (site.chartData && site.chartData.length > (existing.chartData?.length || 0)) {
+            existing.chartData = site.chartData;
+          }
+        } else {
+          uniqueSitesMap.set(site.id, site);
+        }
+      });
+      
+      sites = Array.from(uniqueSitesMap.values());
       
       // Cache site metadata for future use
-      if (sites.length > 0) {
-        console.log(`Caching metadata for ${sites.length} sites`);
-        await CachedUSGSService.cacheSiteMetadata(sites);
+      const siteMetadata = sites.map(site => ({
+        id: site.id,
+        name: site.name,
+        latitude: site.latitude,
+        longitude: site.longitude
+      }));
+      
+      if (siteMetadata.length > 0) {
+        console.log(`Caching metadata for ${siteMetadata.length} sites`);
+        await CachedUSGSService.cacheSiteMetadata(siteMetadata);
       }
     }
     
-    // Cache the results with shorter TTL for current conditions
+    // Return processed sites data
+    const result = { sites, cached: false };
+    
+    // Cache the processed results with shorter TTL for current conditions
     console.log('Caching USGS data for key:', cacheKey);
-    await cacheSet(cacheKey, {...response.data, cached: false}, CACHE_TTL.USGS_CURRENT);
+    await cacheSet(cacheKey, result, CACHE_TTL.USGS_CURRENT);
     
     // Add CORS headers
-    return NextResponse.json({...response.data, cached: false}, {
+    return NextResponse.json(result, {
       headers: {
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Methods': 'GET',

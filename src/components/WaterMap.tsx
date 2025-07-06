@@ -26,6 +26,7 @@ const DynamicMap = dynamic(() => import('../components/MapView'), {
   globalTrendHours: number;
   onTrendHoursChange: (hours: number) => void;
   onVisibilityStatsChange?: (stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => void;
+  onMapBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
   chartControlsVisible?: boolean;
   floodPanelVisible?: boolean;
   onChartControlsVisibilityChange?: (visible: boolean) => void;
@@ -96,7 +97,9 @@ export default function WaterMap() {
     return `${days}d ago`;
   };
 
-  // Load data only when trend hours changes, with debouncing
+  // Load data when trend hours changes OR when map moves to new area
+  const [lastLoadedBounds, setLastLoadedBounds] = useState<any>(null);
+  
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       loadWaterSites();
@@ -105,30 +108,85 @@ export default function WaterMap() {
     return () => clearTimeout(timeoutId);
   }, [globalTrendHours]);
 
-  // Load waterways only once on mount (they don't change with trend hours)
+  // Callback to handle map bounds changes from MapView
+  const handleMapBoundsChange = useCallback(async (bounds: any) => {
+    // Check if we need to load new data (bounds changed significantly)
+    if (!lastLoadedBounds || 
+        Math.abs(bounds.north - lastLoadedBounds.north) > 0.2 ||
+        Math.abs(bounds.south - lastLoadedBounds.south) > 0.2 ||
+        Math.abs(bounds.east - lastLoadedBounds.east) > 0.2 ||
+        Math.abs(bounds.west - lastLoadedBounds.west) > 0.2) {
+      
+      console.log('Map moved significantly, loading new data for bounds:', bounds);
+      setLastLoadedBounds(bounds);
+      
+      // Load both gauge sites and waterways for the new area
+      await Promise.all([
+        loadWaterSitesForBounds(bounds),
+        loadWaterwaysForBounds(bounds)
+      ]);
+    }
+  }, [lastLoadedBounds, globalTrendHours]);
+
+  // Load waterways for initial Austin area on mount
   useEffect(() => {
-    loadWaterways();
+    const austinBounds = {
+      north: parseFloat((30.2672 + 1.45).toFixed(6)),  // ~31.717
+      south: parseFloat((30.2672 - 1.45).toFixed(6)),  // ~28.817
+      east: parseFloat((-97.7431 + 1.45).toFixed(6)),  // ~-96.293
+      west: parseFloat((-97.7431 - 1.45).toFixed(6))   // ~-99.193
+    };
+    loadWaterwaysForBounds(austinBounds);
+    setLastLoadedBounds(austinBounds);
   }, []);
 
-  const loadWaterways = async () => {
+  const loadWaterwaysForBounds = async (bbox: any) => {
     try {
-      // Load waterways for a 100-mile area around Austin (about 1.45 degrees)
-      const bbox = {
-        north: parseFloat((30.2672 + 1.45).toFixed(6)),  // ~31.717
-        south: parseFloat((30.2672 - 1.45).toFixed(6)),  // ~28.817
-        east: parseFloat((-97.7431 + 1.45).toFixed(6)),  // ~-96.293
-        west: parseFloat((-97.7431 - 1.45).toFixed(6))   // ~-99.193
-      };
-      
-      console.log('Loading waterways for 100-mile radius around Austin with bbox:', bbox);
+      console.log('Loading waterways for bounds:', bbox);
       
       const waterwayData = await WaterwayService.getWaterways(bbox);
       setWaterways(waterwayData);
       
-      console.log('Loaded waterways:', waterwayData);
+      console.log('Loaded waterways:', waterwayData.length);
     } catch (err) {
       console.error('Error loading waterways:', err);
       // Don't set error state for waterways, just continue without them
+    }
+  };
+
+  const loadWaterSitesForBounds = async (bbox: any) => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const currentTime = new Date().toISOString();
+      
+      console.log('Loading water sites for bounds:', bbox);
+      
+      const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);
+      
+      // Update USGS data timestamp
+      setLastUpdated(prev => ({ ...prev, usgs: currentTime }));
+      
+      // Filter and prioritize sites for better performance
+      const activeSites = waterSites
+        .filter(site => site.chartData && site.chartData.length > 0) // Only sites with chart data
+        .sort((a, b) => {
+          // Prioritize by last updated time (most recent first)
+          const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
+          const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
+          return bTime - aTime;
+        })
+        .slice(0, 200); // Increased limit for larger areas
+      
+      setSites(activeSites);
+      console.log(`Loaded ${activeSites.length} active sites (from ${waterSites.length} total)`);
+      
+    } catch (err) {
+      console.error('Error loading water sites:', err);
+      setError('Failed to load water sites');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -160,183 +218,15 @@ export default function WaterMap() {
   };
 
   const loadWaterSites = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const currentTime = new Date().toISOString();
-      
-      // Load sites within 70-mile radius of Austin for better performance
-      // Austin coordinates: 30.2672, -97.7431 
-      const bbox = {
-        north: parseFloat((30.2672 + 1.0).toFixed(6)),  // ~31.267 (reduced from 1.45)
-        south: parseFloat((30.2672 - 1.0).toFixed(6)),  // ~29.267 (reduced from 1.45) 
-        east: parseFloat((-97.7431 + 1.0).toFixed(6)),  // ~-96.743 (reduced from 1.45)
-        west: parseFloat((-97.7431 - 1.0).toFixed(6))   // ~-98.743 (reduced from 1.45)
-      };
-      
-      console.log('Loading water sites for 70-mile radius around Austin (optimized for performance):', bbox);
-      
-      const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);
-      
-      // Update USGS data timestamp
-      setLastUpdated(prev => ({ ...prev, usgs: currentTime }));
-      
-      // Filter and prioritize sites for better performance
-      const activeSites = waterSites
-        .filter(site => site.chartData && site.chartData.length > 0) // Only sites with chart data
-        .sort((a, b) => {
-          // Prioritize by last updated time (most recent first)
-          const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
-          const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
-          return bTime - aTime;
-        })
-        .slice(0, 150); // Limit to 150 most active sites for performance
-      
-      setSites(activeSites);
-      console.log(`Performance optimization: Showing ${activeSites.length} most active sites (from ${waterSites.length} total)`);
-      console.log('Sites with chart data:', activeSites.length);
-      
-      // If no sites found, add some test sites for demonstration
-      if (waterSites.length === 0) {
-        console.log('No USGS sites found, adding test sites');
-        // Generate sample chart data for the specified hours
-        const generateSampleChartData = (baseLevel: number) => {
-          const data = [];
-          const now = Date.now();
-          const totalPoints = Math.max(globalTrendHours * 6, 6); // 6 points per hour (10-minute intervals)
-          console.log(`Generating sample chart data with ${totalPoints} points for ${globalTrendHours} hours`);
-          for (let i = totalPoints - 1; i >= 0; i--) {
-            data.push({
-              time: now - (i * 10 * 60 * 1000), // 10-minute intervals
-              value: baseLevel + (Math.random() - 0.5) * 0.5 // Small random variation
-            });
-          }
-          console.log('Generated chart data:', data.slice(0, 3), '... (showing first 3 points)');
-          return data;
-        };
-
-        const testSites: WaterSite[] = [
-          {
-            id: 'test-001',
-            name: 'San Gabriel River at Georgetown',
-            latitude: 30.6327,
-            longitude: -97.6769,
-            waterLevel: 4.5,
-            gageHeight: 4.5,
-            waterLevelStatus: 'normal',
-            lastUpdated: new Date().toISOString(),
-            chartData: generateSampleChartData(4.5),
-            floodStage: 14.0,
-            streamflow: 45
-          },
-          {
-            id: 'test-002', 
-            name: 'South Fork San Gabriel River',
-            latitude: 30.6100,
-            longitude: -97.7000,
-            waterLevel: 2.8,
-            gageHeight: 2.8,
-            waterLevelStatus: 'low',
-            lastUpdated: new Date().toISOString(),
-            chartData: generateSampleChartData(2.8),
-            floodStage: 10.0,
-            streamflow: 12
-          },
-          {
-            id: 'test-003',
-            name: 'Guadalupe River near Spring Branch',
-            latitude: 29.8669,
-            longitude: -98.3864,
-            waterLevel: 12.2,
-            gageHeight: 12.2,
-            waterLevelStatus: 'high',
-            lastUpdated: new Date().toISOString(),
-            chartData: generateSampleChartData(12.2),
-            floodStage: 11.0,
-            streamflow: 2400
-          },
-          {
-            id: 'test-004',
-            name: 'Blanco River at Wimberley',
-            latitude: 29.9966,
-            longitude: -98.1000,
-            waterLevel: 8.8,
-            gageHeight: 8.8,
-            waterLevelStatus: 'high',
-            lastUpdated: new Date().toISOString(),
-            chartData: generateSampleChartData(8.8),
-            floodStage: 7.5,
-            streamflow: 1850
-          },
-          {
-            id: 'test-005',
-            name: 'Guadalupe River at Comfort',
-            latitude: 30.0267,
-            longitude: -98.9095,
-            waterLevel: 2.1,
-            gageHeight: 2.1,
-            waterLevelStatus: 'normal',
-            lastUpdated: new Date().toISOString(),
-            chartData: generateSampleChartData(2.1),
-            floodStage: 8.0,
-            streamflow: 95
-          },
-          {
-            id: 'test-006',
-            name: 'Pedernales River near Johnson City',
-            latitude: 30.2756,
-            longitude: -98.4095,
-            waterLevel: 11.5,
-            gageHeight: 11.5,
-            waterLevelStatus: 'high',
-            lastUpdated: new Date().toISOString(),
-            chartData: generateSampleChartData(11.5),
-            floodStage: 9.0,
-            streamflow: 3200
-          }
-        ];
-        setSites(testSites);
-      } else {
-        setSites(waterSites);
-      }
-    } catch (err) {
-      console.error('Error loading water sites:', err);
-      setError('Failed to load water sites');
-      
-      // Set test sites on error
-      const generateSampleChartData = (baseLevel: number) => {
-        const data = [];
-        const now = Date.now();
-        const totalPoints = Math.max(globalTrendHours * 6, 6); // 6 points per hour (10-minute intervals)
-        for (let i = totalPoints - 1; i >= 0; i--) {
-          data.push({
-            time: now - (i * 10 * 60 * 1000), // 10-minute intervals
-            value: baseLevel + (Math.random() - 0.5) * 0.5 // Small random variation
-          });
-        }
-        return data;
-      };
-
-      const testSites: WaterSite[] = [
-        {
-          id: 'test-001',
-          name: 'San Gabriel River at Georgetown (Test)',
-          latitude: 30.6327,
-          longitude: -97.6769,
-          waterLevel: 4.5,
-          gageHeight: 4.5,
-          waterLevelStatus: 'normal',
-          lastUpdated: new Date().toISOString(),
-          chartData: generateSampleChartData(4.5),
-          floodStage: 14.0,
-          streamflow: 45
-        }
-      ];
-      setSites(testSites);
-    } finally {
-      setLoading(false);
-    }
+    // Load sites for initial Austin area
+    const austinBbox = {
+      north: parseFloat((30.2672 + 1.0).toFixed(6)),  // ~31.267
+      south: parseFloat((30.2672 - 1.0).toFixed(6)),  // ~29.267 
+      east: parseFloat((-97.7431 + 1.0).toFixed(6)),  // ~-96.743
+      west: parseFloat((-97.7431 - 1.0).toFixed(6))   // ~-98.743
+    };
+    
+    await loadWaterSitesForBounds(austinBbox);
   };
 
   const handleStateChange = async (state: string) => {
@@ -480,7 +370,7 @@ export default function WaterMap() {
             
             <div className="text-sm text-gray-600">
               {visibilityStats.gaugeSitesVisible 
-                ? `Showing ${visibilityStats.visibleSites} of ${sites.length} sites within 100 miles of Austin`
+                ? `Showing ${visibilityStats.visibleSites} of ${sites.length} sites in current view`
                 : `${sites.length} gauge sites available (currently hidden)`
               }
               <div className="text-xs text-gray-500 mt-1">
@@ -567,6 +457,7 @@ export default function WaterMap() {
           globalTrendHours={globalTrendHours}
           onTrendHoursChange={handleTrendHoursChange}
           onVisibilityStatsChange={handleVisibilityStatsChange}
+          onMapBoundsChange={handleMapBoundsChange}
           chartControlsVisible={chartControlsVisible}
           floodPanelVisible={floodPanelVisible}
           onChartControlsVisibilityChange={setChartControlsVisible}
