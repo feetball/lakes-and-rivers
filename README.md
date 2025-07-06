@@ -16,13 +16,21 @@ A comprehensive real-time flood monitoring system for Texas lakes and rivers, fe
 
 ## Technology Stack
 
-- **Next.js 14**: React framework with App Router
+- **Next.js 14.2.30**: React framework with App Router (latest security patches)
 - **TypeScript**: Type-safe development
 - **React-Leaflet**: Interactive maps
 - **Recharts**: Chart visualization for water level trends
 - **Redis**: High-performance caching for API responses
 - **Tailwind CSS**: Utility-first CSS framework
 - **Docker**: Containerized deployment
+
+## Security
+
+This project is regularly updated to address security vulnerabilities:
+
+- **Latest Security Patches**: Updated to Next.js 14.2.30 (January 2025) to address critical vulnerabilities including SSRF, cache poisoning, and authorization bypass issues
+- **Dependency Auditing**: Regular `npm audit` checks ensure all dependencies are secure
+- **Admin Authentication**: Cache management interface protected with HTTP Basic Authentication
 
 ## Quick Start
 
@@ -102,18 +110,18 @@ docker run -p 3000:3000 -v $(pwd):/app lakes-rivers-dev
 ### Installation
 
 1. Clone the repository:
-   \`\`\`bash
+   ```bash
    git clone https://github.com/feetball/dk-texas-flood-overview.git
    cd dk-texas-flood-overview
-   \`\`\`
+   ```
 
 2. Install dependencies:
-   \`\`\`bash
+   ```bash
    npm install
-   \`\`\`
+   ```
 
 3. Set up Redis (optional but recommended):
-   \`\`\`bash
+   ```bash
    # Run the setup script for automatic Redis installation
    ./setup-redis.sh
    
@@ -121,18 +129,18 @@ docker run -p 3000:3000 -v $(pwd):/app lakes-rivers-dev
    # Ubuntu/Debian: sudo apt-get install redis-server
    # macOS: brew install redis
    # Windows: Use Redis for Windows or Docker
-   \`\`\`
+   ```
 
 4. Configure environment variables:
-   \`\`\`bash
+   ```bash
    cp .env.example .env.local
    # Edit .env.local with your Redis URL if needed
-   \`\`\`
+   ```
 
 5. Start the development server:
-   \`\`\`bash
+   ```bash
    npm run dev
-   \`\`\`
+   ```
 
 6. Open [http://localhost:3000](http://localhost:3000) in your browser
 
@@ -174,7 +182,7 @@ The application includes an admin interface for cache management:
 - Password: Set via `ADMIN_PASSWORD` environment variable
 
 **API Endpoints:**
-\`\`\`bash
+```bash
 # Get cache status (requires Basic Auth)
 GET /api/admin/cache
 
@@ -183,7 +191,7 @@ POST /api/admin/cache
 {
   "action": "clear_waterways"    # or "clear_usgs", "clear_all"
 }
-\`\`\`
+```
 
 **Available Actions:**
 - `clear_waterways` - Clear waterway/river data cache (safe)
@@ -191,7 +199,7 @@ POST /api/admin/cache
 - `clear_all` - Clear entire cache (use with caution)
 
 **Redis CLI Commands:**
-\`\`\`bash
+```bash
 # Monitor cache activity
 redis-cli monitor
 
@@ -203,7 +211,7 @@ redis-cli flushall
 
 # Check cache status
 redis-cli info memory
-\`\`\`
+```
 
 ## API Information
 
@@ -228,7 +236,7 @@ This application uses multiple APIs with intelligent caching:
 
 ## Project Structure
 
-\`\`\`
+```plaintext
 src/
 ├── app/                    # Next.js App Router
 │   ├── api/               # API routes
@@ -250,15 +258,15 @@ src/
 │   └── waterways.ts      # Waterway API service
 └── types/                 # TypeScript types
     └── water.ts          # Water data types
-\`\`\`
+```
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch: \`git checkout -b feature-name\`
+2. Create a feature branch: `git checkout -b feature-name`
 3. Make changes and test
-4. Commit changes: \`git commit -am 'Add feature'\`
-5. Push to branch: \`git push origin feature-name\`
+4. Commit changes: `git commit -am 'Add feature'`
+5. Push to branch: `git push origin feature-name`
 6. Submit a pull request
 
 ## License
