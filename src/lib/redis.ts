@@ -10,6 +10,8 @@ export async function getRedisClient() {
       return null;
     }
     
+    console.log('Attempting Redis connection with URL:', process.env.REDIS_URL?.replace(/:[^:]*@/, ':***@')); // Hide password in logs
+    
     try {
       redis = createClient({
         url: process.env.REDIS_URL,

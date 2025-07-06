@@ -1,25 +1,29 @@
 # Railway Redis Setup - Step by Step Fix
 
 ## The Problem
-You're getting `ENOTFOUND redis` because Railway doesn't automatically deploy Redis. You need to add it as a separate service.
+You're getting `ENOTFOUND redis` because:
+1. Your `.env.production` file had `REDIS_URL=redis://redis:6379` (Docker URL)
+2. Railway was using this instead of its own Redis URL
+3. Railway doesn't automatically deploy Redis - you need to add it manually
 
-## 🔧 Solution: Add Redis Service to Railway
+## 🔧 Solution: Fix Environment and Add Redis Service
 
-### Step 1: Access Your Railway Project
+### Step 1: ✅ Environment Fixed
+I've already fixed your `.env.production` file to not override Railway's Redis URL.
+
+### Step 2: Add Redis Service to Railway
 1. Go to [railway.app](https://railway.app)
 2. Open your `lakes-and-rivers` project
-
-### Step 2: Add Redis Database
-1. In your project dashboard, click the **"+"** button or **"New"**
-2. Select **"Database"**
-3. Choose **"Add Redis"**
-4. Railway will create a Redis service and generate a `REDIS_URL` environment variable
+3. Click the **"+"** button or **"New"**
+4. Select **"Database"** → **"Add Redis"**
+5. Railway will create a Redis service and generate a `REDIS_URL` environment variable
 
 ### Step 3: Verify Environment Variables
 1. Go to your app service (not the Redis service)
 2. Click on **"Variables"** tab
 3. You should see `REDIS_URL` automatically added
 4. It should look like: `redis://default:password@host:port`
+5. **Make sure there's no manual `REDIS_URL` override**
 
 ### Step 4: Redeploy Your Application
 1. Your app should automatically redeploy when Redis is added
