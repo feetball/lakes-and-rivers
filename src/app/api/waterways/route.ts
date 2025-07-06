@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { cacheGet, cacheSet, generateBboxCacheKey, CACHE_TTL } from '@/lib/redis';
+import { recordCacheStat } from '../admin/cache/route';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
@@ -19,11 +20,9 @@ export async function GET(request: NextRequest) {
     const cacheKey = generateBboxCacheKey(bbox);
     
     // Try to get from cache first
-    console.log('Checking cache for waterways:', cacheKey);
     const cachedWaterways = await cacheGet(cacheKey);
-    
     if (cachedWaterways) {
-      console.log('Returning cached waterways:', cachedWaterways.length, 'waterways');
+      recordCacheStat('waterways', true);
       return NextResponse.json({ waterways: cachedWaterways, cached: true }, {
         headers: {
           'Access-Control-Allow-Origin': '*',
@@ -31,12 +30,14 @@ export async function GET(request: NextRequest) {
           'Access-Control-Allow-Headers': 'Content-Type',
         },
       });
+    } else {
+      recordCacheStat('waterways', false);
     }
 
     // Overpass API query to get major rivers and lakes with full geometry
-    // For relations, we'll try to get the outer ways that define the boundaries
+    // For relations, we'll get all ways that are members of water relations
     const query = `
-      [out:json][timeout:30];
+      [out:json][timeout:45];
       (
         way["waterway"="river"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
         way["waterway"="stream"]["name"](${bbox.south},${bbox.west},${bbox.north},${bbox.east});
@@ -49,8 +50,6 @@ export async function GET(request: NextRequest) {
       out geom;
     `;
 
-    console.log('Fetching waterways from Overpass API for bbox:', bbox);
-
     const response = await axios.post(
       'https://overpass-api.de/api/interpreter',
       query,
@@ -60,18 +59,6 @@ export async function GET(request: NextRequest) {
         },
       }
     );
-
-    console.log('Overpass API returned', response.data.elements.length, 'elements');
-    
-    // Debug: Check what types of water elements we got
-    const elementTypes = response.data.elements.reduce((acc: any, el: any) => {
-      const waterway = el.tags?.waterway;
-      const natural = el.tags?.natural;
-      const landuse = el.tags?.landuse;
-      const key = waterway || natural || landuse || 'other';
-      acc[key] = (acc[key] || 0) + 1;
-      return acc;
-    }, {});
 
     // Create a map of ways for relation processing
     const waysMap = new Map();
@@ -128,9 +115,16 @@ export async function GET(request: NextRequest) {
             .filter((way: any) => way && way.geometry);
           
           if (outerWays.length > 0) {
-            // Use the first outer way's geometry as the primary boundary
-            // In a full implementation, we'd properly join all outer ways
-            coordinates = outerWays[0].geometry.map((point: any) => [point.lat, point.lon]);
+            // Combine all outer ways into a single coordinate array
+            // This creates a more complete boundary for large lakes
+            const allCoordinates: number[][] = [];
+            
+            outerWays.forEach((way: any) => {
+              const wayCoords = way.geometry.map((point: any) => [point.lat, point.lon]);
+              allCoordinates.push(...wayCoords);
+            });
+            
+            coordinates = allCoordinates;
             
             // If the coordinates don't form a closed polygon, close it
             if (coordinates.length > 0 && 
@@ -194,16 +188,7 @@ export async function GET(request: NextRequest) {
         return isMajorRiver;
       });
 
-    // Debug: Check final waterway types
-    const finalTypes = waterways.reduce((acc: any, w: any) => {
-      acc[w.type] = (acc[w.type] || 0) + 1;
-      return acc;
-    }, {});
-    console.log('Final waterway types after filtering:', finalTypes);
-    console.log('Lake/reservoir examples:', waterways.filter((w: any) => w.type === 'lake' || w.type === 'reservoir').slice(0, 3));
-
     // Cache the results for 24 hours
-    console.log('Caching waterways:', waterways.length, 'waterways for key:', cacheKey);
     await cacheSet(cacheKey, waterways, CACHE_TTL.WATERWAYS);
 
     return NextResponse.json({ waterways, cached: false }, {

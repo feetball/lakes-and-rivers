@@ -1,11 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
 
+// In-memory cache hit/miss counters (reset on server restart)
+let cacheStats = {
+  waterways: { hit: 0, miss: 0 },
+  usgs: { hit: 0, miss: 0 },
+  other: { hit: 0, miss: 0 }
+};
+
+// Exported for use in API routes
+export function recordCacheStat(type: 'waterways' | 'usgs' | 'other', hit: boolean) {
+  if (!cacheStats[type]) cacheStats[type] = { hit: 0, miss: 0 };
+  if (hit) cacheStats[type].hit++;
+  else cacheStats[type].miss++;
+}
+
 // This route should be dynamic to avoid static generation during build
 export const dynamic = 'force-dynamic';
 
 // Simple authentication function
 function authenticate(request: NextRequest): boolean {
+  // DEBUG: Log if ADMIN_PASSWORD is set
+  if (process.env.NODE_ENV !== 'production') {
+    if (!process.env.ADMIN_PASSWORD) {
+      console.warn('[DEBUG] ADMIN_PASSWORD is NOT set in process.env');
+    } else {
+      console.log('[DEBUG] ADMIN_PASSWORD is set in process.env');
+    }
+  }
   const authHeader = request.headers.get('authorization');
   
   if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -63,10 +85,26 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Get Redis memory stats
+    let redisStats = {};
+    if (redis) {
+      try {
+        const info = await redis.info();
+        const usedMemory = info.match(/used_memory:(\d+)/);
+        const usedMemoryHuman = info.match(/used_memory_human:([\w\.]+)/);
+        redisStats = {
+          usedMemory: usedMemory ? parseInt(usedMemory[1]) : null,
+          usedMemoryHuman: usedMemoryHuman ? usedMemoryHuman[1] : null
+        };
+      } catch (e) {}
+    }
+
     return NextResponse.json({
       status: 'authenticated',
       timestamp: new Date().toISOString(),
       cache: cacheInfo,
+      cacheStats,
+      redisStats,
       actions: {
         clear_all: 'POST /api/admin/cache with action=clear_all',
         clear_waterways: 'POST /api/admin/cache with action=clear_waterways',

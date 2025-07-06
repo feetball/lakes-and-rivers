@@ -161,18 +161,24 @@
 
         function updateStatus(data) {
             const status = document.getElementById('status');
+            let html = '';
             if (data.cache.connected) {
-                status.innerHTML = `
-                    <strong>✅ Cache Status:</strong> Connected<br>
-                    <strong>📊 Cached Keys:</strong> ${data.cache.keyCount}<br>
-                    <strong>🕐 Last Updated:</strong> ${new Date(data.timestamp).toLocaleString()}
-                `;
+                html += `<strong>✅ Cache Status:</strong> Connected<br>`;
+                html += `<strong>📊 Cached Keys:</strong> ${data.cache.keyCount}<br>`;
+                if (data.redisStats) {
+                    html += `<strong>🧠 Redis Memory:</strong> ${data.redisStats.usedMemoryHuman || data.redisStats.usedMemory || 'N/A'}<br>`;
+                }
+                if (data.cacheStats) {
+                    html += `<hr><strong>Cache Hit/Miss:</strong><br>`;
+                    html += `<strong>Waterways:</strong> ${data.cacheStats.waterways?.hit || 0} hit / ${data.cacheStats.waterways?.miss || 0} miss<br>`;
+                    html += `<strong>USGS:</strong> ${data.cacheStats.usgs?.hit || 0} hit / ${data.cacheStats.usgs?.miss || 0} miss<br>`;
+                }
+                html += `<strong>🕐 Last Updated:</strong> ${new Date(data.timestamp).toLocaleString()}`;
             } else {
-                status.innerHTML = `
-                    <strong>❌ Cache Status:</strong> Disconnected<br>
-                    <strong>🕐 Last Checked:</strong> ${new Date(data.timestamp).toLocaleString()}
-                `;
+                html += `<strong>❌ Cache Status:</strong> Disconnected<br>`;
+                html += `<strong>🕐 Last Checked:</strong> ${new Date(data.timestamp).toLocaleString()}`;
             }
+            status.innerHTML = html;
         }
 
         async function clearCache(action) {

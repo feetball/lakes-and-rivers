@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { cacheGet, cacheSet, generateBboxCacheKey, CACHE_TTL } from '@/lib/redis';
+import { recordCacheStat } from '../admin/cache/route';
 import { CachedUSGSService } from '@/services/cachedUsgs';
 
 const USGS_BASE_URL = 'https://waterservices.usgs.gov/nwis/iv/';
@@ -40,7 +41,8 @@ export async function GET(request: NextRequest) {
     const cachedData = await cacheGet(cacheKey);
     
     if (cachedData) {
-      console.log('Returning cached USGS data');
+      recordCacheStat('usgs', true);
+      console.log('Returning cached USGS data:', cacheKey);
       return NextResponse.json({...cachedData, cached: true}, {
         headers: {
           'Access-Control-Allow-Origin': '*',
@@ -48,6 +50,8 @@ export async function GET(request: NextRequest) {
           'Access-Control-Allow-Headers': 'Content-Type',
         },
       });
+    } else {
+      recordCacheStat('usgs', false);
     }
 
     // Convert hours to ISO 8601 duration format for USGS API
