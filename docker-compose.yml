@@ -27,6 +27,8 @@ services:
     environment:
       - NODE_ENV=production
       - REDIS_URL=redis://redis:6379
+      - ADMIN_USERNAME=${ADMIN_USERNAME:-feetball}
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
     depends_on:
       redis:
         condition: service_healthy

@@ -8,9 +8,32 @@ We release patches for security vulnerabilities for the following versions:
 | ------- | ------------------ |
 | 0.1.x   | :white_check_mark: |
 
-## Reporting a Vulnerability
+## 🔒 Environment Variables & Password Security
 
-We take the security of our software seriously. If you believe you have found a security vulnerability, please report it to us as described below.
+### **NEVER commit passwords to git!**
+
+This project uses environment variables for sensitive configuration:
+
+#### Local Development
+1. Copy template: `cp .env.example .env.local`
+2. Set secure password: `ADMIN_PASSWORD=YourSecurePassword123!`
+3. `.env.local` is gitignored and never committed
+
+#### Production Deployment
+- **Railway:** Set `ADMIN_PASSWORD` in project dashboard
+- **Docker:** Use `ADMIN_PASSWORD=yourpass docker compose up`
+- **Other platforms:** Set in environment variables section
+
+#### Cache Admin Access
+- URL: `/admin/cache.html`
+- Username: `feetball` (configurable via `ADMIN_USERNAME`)
+- Password: From `ADMIN_PASSWORD` environment variable
+
+#### Security Best Practices
+✅ **DO:** Use strong passwords (12+ chars), rotate periodically
+❌ **DON'T:** Commit passwords, use simple passwords, share in chat
+
+## Reporting a Vulnerability
 
 **Please do not report security vulnerabilities through public GitHub issues.**
 
