@@ -6,11 +6,13 @@ const nextConfig = {
   // Enable compression for better performance
   compress: true,
   
-  // Optimize CSS and assets
+  // Experimental features (removed optimizeCss due to critters dependency issue)
   experimental: {
-    optimizeCss: true,
     outputFileTracingRoot: undefined,
   },
+  
+  // Skip static generation for API routes during build
+  trailingSlash: false,
   
   // Image optimizations
   images: {

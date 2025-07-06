@@ -5,8 +5,9 @@ let redis: any = null;
 export async function getRedisClient() {
   if (!redis) {
     // Skip Redis connection if no REDIS_URL is provided (Railway will set this when Redis addon is added)
-    if (!process.env.REDIS_URL) {
-      console.log('No REDIS_URL found, running without cache');
+    // Also skip during build time
+    if (!process.env.REDIS_URL || process.env.NODE_ENV === 'production' && !process.env.REDIS_URL) {
+      console.log('No REDIS_URL found or build time, running without cache');
       return null;
     }
     
