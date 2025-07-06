@@ -149,6 +149,7 @@ docker run -p 3000:3000 -v $(pwd):/app lakes-rivers-dev
   - **Click**: View detailed information and charts
   - **Charts Toggle**: Enable/disable chart overlays and arrows
   - **Waterways Toggle**: Show/hide major river overlays
+  - **Flood Awareness Mode**: Enabled by default - color-codes waterways by flood risk
   - **Drag Charts**: Move chart overlays around the map
   - **Time Range**: Select 1hr, 8hr, 24hr, or 48hr trend data
 - **Map Navigation**: Pan and zoom to explore different areas (new gauges load automatically)
