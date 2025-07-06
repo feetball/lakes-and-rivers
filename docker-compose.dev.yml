@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  # Redis for development
+  redis-dev:
+    image: redis:7.0-alpine
+    container_name: lakes-redis-dev
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_dev_data:/data
+    command: redis-server --appendonly yes
+
+  # Development app with hot reload
+  app-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: lakes-app-dev
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+      - REDIS_URL=redis://redis-dev:6379
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - redis-dev
+    command: npm run dev
+
+volumes:
+  redis_dev_data:
+    driver: local
