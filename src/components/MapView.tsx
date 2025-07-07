@@ -239,7 +239,7 @@ const createCustomIcon = (site: WaterSite) => {
 
 
 const MapView: React.FC<MapViewProps> = ({ 
-  sites, 
+  sites: initialSites, 
   waterways, 
   globalTrendHours, 
   onTrendHoursChange, 
@@ -252,7 +252,8 @@ const MapView: React.FC<MapViewProps> = ({
 }) => {
   const defaultCenter: [number, number] = [30.6327, -97.6769]; // Georgetown, TX
   const defaultZoom = 11;
-  const [visibleSites, setVisibleSites] = useState<WaterSite[]>(sites);
+  const [sites, setSites] = useState<WaterSite[]>(initialSites);
+  const [visibleSites, setVisibleSites] = useState<WaterSite[]>(initialSites);
   const [chartsVisible, setChartsVisible] = useState(false);
   const [waterwaysVisible, setWaterwaysVisible] = useState(true);
   const [gaugeSitesVisible, setGaugeSitesVisible] = useState(true);
@@ -262,6 +263,31 @@ const MapView: React.FC<MapViewProps> = ({
   const [isLocalNetwork, setIsLocalNetwork] = useState(false);
   const [cacheStats, setCacheStats] = useState<any>(null);
   const mapRef = useRef<any>(null);
+
+  // Periodically fetch latest gaugeSites from /api/usgs (Texas bounding box for cached data)
+  useEffect(() => {
+    let isMounted = true;
+    let interval: NodeJS.Timeout;
+    const fetchSites = async () => {
+      try {
+        // Use Texas bounding box to access cached data
+        const resp = await fetch('/api/usgs?north=36.5&south=25.8&east=-93.5&west=-106.7&hours=24');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (data && Array.isArray(data.sites) && isMounted) {
+          setSites(data.sites);
+        }
+      } catch (err) {
+        // Optionally log error
+      }
+    };
+    fetchSites();
+    interval = setInterval(fetchSites, 60000); // 60s
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Check if user is on local network for cache management
   useEffect(() => {
@@ -629,8 +655,8 @@ const MapView: React.FC<MapViewProps> = ({
               permanent={false}
               sticky={false}
             >
-              <div className="p-2 max-w-xs">
-                <h3 className="font-bold text-base mb-2">{site.name}</h3>
+              <div className="p-2 max-w-xs" style={{width: '320px', fontSize: '13px', maxWidth: '95vw'}}>
+                <h3 className="font-bold text-base md:text-lg mb-2 break-words whitespace-normal">{site.name}</h3>
                 <div className="space-y-1 text-xs">
                   <div>
                     <strong>Site ID:</strong> {site.id}
@@ -691,7 +717,7 @@ const MapView: React.FC<MapViewProps> = ({
                 {site.chartData && site.chartData.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-gray-200">
                     <div className="text-xs font-semibold text-gray-600 mb-1">
-                      Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Chart data: {site.chartData.length} points)
+                      <span className="break-words whitespace-normal">Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Chart data: {site.chartData.length} points)</span>
                     </div>
                     <WaterLevelChart 
                       data={site.chartData} 
@@ -709,9 +735,11 @@ const MapView: React.FC<MapViewProps> = ({
               </div>
             </Tooltip>
             <Popup className="custom-popup">
-              <div className="p-2">
-                <h3 className="font-bold text-lg mb-2">{site.name}</h3>
-                <div className="space-y-1 text-sm">
+              <div className="p-3 max-w-none">
+                <h3 className="font-bold text-lg mb-3 break-words">{site.name}</h3>
+                
+                {/* Single column layout for better content flow */}
+                <div className="space-y-2 text-sm mb-3">
                   <div>
                     <strong>Site ID:</strong> {site.id}
                   </div>
@@ -745,7 +773,7 @@ const MapView: React.FC<MapViewProps> = ({
                     <div>
                       <strong>Flood Stage:</strong> {formatWaterLevel(site.floodStage)}
                       {site.gageHeight && site.floodStage && (
-                        <span className="text-xs ml-1">
+                        <span className="text-xs ml-1 block">
                           ({((site.gageHeight / site.floodStage) * 100).toFixed(0)}% of flood stage)
                         </span>
                       )}
@@ -756,32 +784,33 @@ const MapView: React.FC<MapViewProps> = ({
                       <strong>Streamflow:</strong> {formatWaterLevel(site.streamflow, 'cfs')}
                     </div>
                   )}
-                  {site.waterLevelStatus && (
-                    <div className="text-xs text-gray-600">
-                      <strong>USGS Status:</strong> {site.waterLevelStatus.toUpperCase()}
-                    </div>
-                  )}
                   <div>
                     <strong>Coordinates:</strong> {site.latitude.toFixed(4)}, {site.longitude.toFixed(4)}
                   </div>
                   <div>
                     <strong>Last Updated:</strong> {formatLastUpdated(site.lastUpdated)}
                   </div>
+                  {site.waterLevelStatus && (
+                    <div className="text-xs text-gray-600">
+                      <strong>USGS Status:</strong> {site.waterLevelStatus.toUpperCase()}
+                    </div>
+                  )}
                 </div>
+                
                 {site.chartData && site.chartData.length > 0 && (
-                  <div className="mt-3 pt-2 border-t border-gray-200">
+                  <div className="pt-2 border-t border-gray-200">
                     <div className="text-xs font-semibold text-gray-600 mb-2">
-                      Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Detailed View - {site.chartData.length} points)
+                      <span className="break-words whitespace-normal">Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level ({site.chartData.length} points)</span>
                     </div>
                     <WaterLevelChart 
                       data={site.chartData} 
                       color={getChartColor(site)}
                       showTooltip={true}
-                      height={120}
+                      height={100}
                     />
                   </div>
                 )}
-                <div className="mt-3 pt-2 border-t border-gray-200">
+                <div className="mt-2 pt-2 border-t border-gray-200">
                   <a
                     href={`https://waterdata.usgs.gov/monitoring-location/${site.id}/`}
                     target="_blank"

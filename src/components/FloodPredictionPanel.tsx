@@ -160,10 +160,10 @@ const FloodPredictionPanel: React.FC<FloodPredictionPanelProps> = ({
             }`}
           >
             <div className="text-sm">
-              <div className="font-semibold text-gray-800">
+              <div className="font-semibold text-gray-800 break-words whitespace-normal">
                 {prediction.toLocation}
               </div>
-              <div className="text-xs text-gray-600 mt-1">
+              <div className="text-xs text-gray-600 mt-1 break-words whitespace-normal">
                 From: {prediction.fromGauge.name}
               </div>
               <div className={`text-sm font-medium mt-1 ${

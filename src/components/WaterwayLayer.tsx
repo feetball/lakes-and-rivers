@@ -65,9 +65,9 @@ const WaterwayLayer: React.FC<WaterwayLayerProps> = ({ waterways }) => {
               pathOptions={style}
             >
               <Tooltip direction="center" offset={[0, 0]} opacity={1}>
-                <div className="text-sm">
-                  <div className="font-semibold">{waterway.name}</div>
-                  <div className="text-xs capitalize">{waterway.type}</div>
+                <div className="text-sm" style={{width: '240px', fontSize: '13px', maxWidth: '90vw'}}>
+                  <div className="font-semibold text-base md:text-lg break-words whitespace-normal">{waterway.name}</div>
+                  <div className="text-xs md:text-sm capitalize break-words whitespace-normal">{waterway.type}</div>
                 </div>
               </Tooltip>
             </Polygon>

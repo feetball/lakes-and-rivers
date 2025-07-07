@@ -18,7 +18,20 @@
 }
 
 .custom-popup {
-  max-width: 300px;
+  max-width: 400px;
+  min-width: 320px;
+  width: auto;
+}
+
+.custom-popup .leaflet-popup-content-wrapper {
+  max-height: 500px;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.custom-popup .leaflet-popup-content {
+  margin: 0;
+  padding: 0;
 }
 
 .custom-tooltip {
@@ -59,15 +72,17 @@
 @media (max-width: 768px) {
   .custom-popup {
     max-width: 280px;
+    min-width: 260px;
     font-size: 14px;
   }
   
   .leaflet-popup-content-wrapper {
-    padding: 8px;
+    padding: 0;
   }
   
   .leaflet-popup-content {
-    margin: 8px 12px;
+    margin: 0;
+    padding: 0;
     line-height: 1.4;
   }
   

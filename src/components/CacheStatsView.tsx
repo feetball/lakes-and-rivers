@@ -116,7 +116,7 @@ export default function CacheStatsView() {
   if (!stats) return null;
 
   return (
-    <div className="p-6 bg-white rounded-lg shadow-lg max-w-6xl mx-auto">
+    <div className="p-6 bg-white rounded-lg shadow-lg max-w-6xl mx-auto break-words whitespace-normal">
       <div className="flex justify-between items-center mb-6">
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Cache Statistics</h2>

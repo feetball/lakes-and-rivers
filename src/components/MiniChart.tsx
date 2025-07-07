@@ -18,7 +18,7 @@ const MiniChart: React.FC<MiniChartProps> = ({
 }) => {
   if (!data || data.length === 0) {
     return (
-      <div className="w-full flex items-center justify-center text-xs text-gray-500 bg-gray-50 border rounded p-2"
+      <div className="w-full flex items-center justify-center text-xs text-gray-500 bg-gray-50 border rounded p-2 break-words whitespace-normal"
            style={{ height: `${height}px` }}>
         No chart data available
       </div>
@@ -47,10 +47,10 @@ const MiniChart: React.FC<MiniChartProps> = ({
   const endTime = new Date(data[data.length - 1].time);
 
   return (
-    <div className="w-full bg-white border rounded p-3" style={{ height: `${height}px` }}>
+    <div className="w-full bg-white border rounded p-3 break-words whitespace-normal" style={{ height: `${height}px` }}>
       <div className="flex flex-col h-full justify-between">
         <div className="text-xs text-gray-600 mb-1">
-          Water Level Trend
+          <span className="break-words whitespace-normal">Water Level Trend</span>
         </div>
         
         <div className="flex items-center justify-between mb-2">
@@ -67,18 +67,18 @@ const MiniChart: React.FC<MiniChartProps> = ({
         
         <div className="text-center mb-2">
           <div className="font-mono text-sm tracking-wider" style={{ color: color }}>
-            {sparkline}
+            <span className="break-words whitespace-normal">{sparkline}</span>
           </div>
         </div>
         
         <div className="flex justify-between text-xs text-gray-500">
           <span>{startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
-          <span className="text-center">{data.length} readings</span>
+          <span className="text-center break-words whitespace-normal">{data.length} readings</span>
           <span>{endTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}</span>
         </div>
         
         <div className="text-xs text-center text-gray-400 mt-1">
-          Range: {minValue.toFixed(2)} - {maxValue.toFixed(2)} ft
+          <span className="break-words whitespace-normal">Range: {minValue.toFixed(2)} - {maxValue.toFixed(2)} ft</span>
         </div>
       </div>
     </div>

@@ -1,5 +1,5 @@
+
 services:
-  # Redis cache service
   redis:
     image: redis:7.0-alpine
     container_name: lakes-redis
@@ -15,30 +15,43 @@ services:
       timeout: 3s
       retries: 5
 
-  # Next.js application
+
   app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    container_name: lakes-app
-    restart: unless-stopped
-    ports:
-      - "3000:3000"
-    environment:
-      - NODE_ENV=production
-      - REDIS_URL=redis://redis:6379
-      - ADMIN_USERNAME=${ADMIN_USERNAME:-feetball}
-      - ADMIN_PASSWORD=${ADMIN_PASSWORD}
+    build: .
     depends_on:
       redis:
         condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-feetball}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      ALLOW_LIVE_USGS_FETCH: ${ALLOW_LIVE_USGS_FETCH}
+    ports:
+      - "3000:3000"
+    command: ["sh", "-c", "node server.js"]
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
 
-  # Nginx reverse proxy (optional for production)
+  preload:
+    build: .
+    depends_on:
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_healthy
+    environment:
+      REDIS_URL: redis://redis:6379
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-feetball}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+    command: ["sh", "-c", "./wait-for-redis.sh node preload-data.js"]
+
   nginx:
     image: nginx:alpine
     container_name: lakes-nginx

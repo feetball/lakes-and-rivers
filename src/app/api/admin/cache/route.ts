@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
+import { cacheSet } from '@/lib/redis';
 
 // In-memory cache hit/miss counters (reset on server restart)
 
@@ -73,9 +74,29 @@ function authenticate(request: NextRequest): boolean {
   }
 }
 
+// Check if request is from preload script (localhost or container-to-container during startup)
+function isPreloadRequest(request: NextRequest): boolean {
+  const userAgent = request.headers.get('user-agent') || '';
+  const host = request.headers.get('host') || '';
+  const xForwardedFor = request.headers.get('x-forwarded-for') || '';
+  
+  // Allow unauthenticated requests during startup from:
+  // 1. localhost/127.0.0.1 (local development)
+  // 2. app:3000 (Docker container-to-container communication)
+  // 3. Internal Docker network ranges
+  const isLocalOrInternal = host.includes('localhost') || 
+                           host.includes('127.0.0.1') || 
+                           host.includes('app:') ||
+                           xForwardedFor.includes('172.') || // Docker default network
+                           xForwardedFor.includes('192.168.') || // Common private networks
+                           xForwardedFor.includes('10.'); // Private network range
+  
+  return isLocalOrInternal && userAgent.includes('node');
+}
+
 // GET - Show cache admin interface (for browser access)
 export async function GET(request: NextRequest) {
-  if (!authenticate(request)) {
+  if (!authenticate(request) && !isPreloadRequest(request)) {
     return new NextResponse('Unauthorized', {
       status: 401,
       headers: {
@@ -143,50 +164,75 @@ export async function GET(request: NextRequest) {
 
 // POST - Perform cache operations
 export async function POST(request: NextRequest) {
-  if (!authenticate(request)) {
-    return new NextResponse('Unauthorized', {
-      status: 401,
-      headers: {
-        'WWW-Authenticate': 'Basic realm="Cache Admin"',
-      },
-    });
+  // Allow preload requests from localhost, otherwise require authentication
+  if (!authenticate(request) && !isPreloadRequest(request)) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
   }
 
   try {
     const body = await request.json();
-    const { action } = body;
-
-    const redis = await getRedisClient();
-    if (!redis) {
-      return NextResponse.json(
-        { error: 'Redis not connected' },
-        { status: 503 }
-      );
-    }
-
-    let result = {};
+    const { action, key, data, ttl, usgs, waterways, flood } = body;
 
     switch (action) {
+      case 'set':
+        if (!key || !data) {
+          return NextResponse.json(
+            { error: 'Missing key or data for set action' },
+            { status: 400 }
+          );
+        }
+        
+        const cacheResult = await cacheSet(key, data, ttl || 3600);
+        
+        return NextResponse.json({
+          status: 'success',
+          timestamp: new Date().toISOString(),
+          action: 'set',
+          key,
+          cached: cacheResult,
+          dataSize: JSON.stringify(data).length
+        });
+
+      case 'set-status':
+        // Update preload status
+        if (typeof usgs === 'boolean') {
+          setTexasPreloadStatus('usgs', usgs);
+        }
+        if (typeof waterways === 'boolean') {
+          setTexasPreloadStatus('waterways', waterways);
+        }
+        // Note: flood stages don't have a current preload status, but we could add it
+        
+        return NextResponse.json({
+          status: 'success',
+          timestamp: new Date().toISOString(),
+          action: 'set-status',
+          preloadStatus: texasPreloadStatus
+        });
+
       case 'clear_all':
-        await redis.flushAll();
-        result = { message: 'All cache cleared' };
-        break;
+        const redisClearAll = await getRedisClient();
+        await redisClearAll?.flushAll();
+        return NextResponse.json({ message: 'All cache cleared' });
 
       case 'clear_waterways':
-        const waterwayKeys = await redis.keys('waterways:*');
-        if (waterwayKeys.length > 0) {
-          await redis.del(waterwayKeys);
+        const redisClearWaterways = await getRedisClient();
+        const waterwayKeys = await redisClearWaterways?.keys('waterways:*');
+        if (waterwayKeys && waterwayKeys.length > 0) {
+          await redisClearWaterways.del(waterwayKeys);
         }
-        result = { message: `Cleared ${waterwayKeys.length} waterway cache entries` };
-        break;
+        return NextResponse.json({ message: `Cleared ${waterwayKeys?.length} waterway cache entries` });
 
       case 'clear_usgs':
-        const usgsKeys = await redis.keys('gauge_*');
-        if (usgsKeys.length > 0) {
-          await redis.del(usgsKeys);
+        const redisClearUsgs = await getRedisClient();
+        const usgsKeys = await redisClearUsgs?.keys('gauge_*');
+        if (usgsKeys && usgsKeys.length > 0) {
+          await redisClearUsgs.del(usgsKeys);
         }
-        result = { message: `Cleared ${usgsKeys.length} USGS cache entries` };
-        break;
+        return NextResponse.json({ message: `Cleared ${usgsKeys?.length} USGS cache entries` });
 
       case 'clear_pattern':
         const pattern = body.pattern;
@@ -196,29 +242,22 @@ export async function POST(request: NextRequest) {
             { status: 400 }
           );
         }
-        const patternKeys = await redis.keys(pattern);
-        if (patternKeys.length > 0) {
-          await redis.del(patternKeys);
+        const redisClearPattern = await getRedisClient();
+        const patternKeys = await redisClearPattern?.keys(pattern);
+        if (patternKeys && patternKeys.length > 0) {
+          await redisClearPattern.del(patternKeys);
         }
-        result = { message: `Cleared ${patternKeys.length} entries matching pattern: ${pattern}` };
-        break;
+        return NextResponse.json({ message: `Cleared ${patternKeys?.length || 0} entries matching pattern: ${pattern}` });
 
       default:
         return NextResponse.json(
-          { error: 'Invalid action. Supported: clear_all, clear_waterways, clear_usgs, clear_pattern' },
+          { error: 'Invalid action. Supported: set, set-status, clear_all, clear_waterways, clear_usgs, clear_pattern' },
           { status: 400 }
         );
     }
 
-    return NextResponse.json({
-      status: 'success',
-      timestamp: new Date().toISOString(),
-      action,
-      result
-    });
-
   } catch (error) {
-    console.error('Cache admin error:', error);
+    console.error('Cache admin POST error:', error);
     return NextResponse.json(
       {
         status: 'error',

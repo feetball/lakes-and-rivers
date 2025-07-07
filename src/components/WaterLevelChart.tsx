@@ -28,7 +28,7 @@ const WaterLevelChart: React.FC<WaterLevelChartProps> = ({
 
   if (!mounted) {
     return (
-      <div className="w-full flex items-center justify-center text-xs text-gray-500"
+      <div className="w-full flex items-center justify-center text-xs text-gray-500 break-words whitespace-normal"
            style={{ height: `${height}px` }}>
         Loading...
       </div>
@@ -37,7 +37,7 @@ const WaterLevelChart: React.FC<WaterLevelChartProps> = ({
 
   if (!data || data.length === 0) {
     return (
-      <div className="w-full flex items-center justify-center text-xs text-gray-500"
+      <div className="w-full flex items-center justify-center text-xs text-gray-500 break-words whitespace-normal"
            style={{ height: `${height}px` }}>
         No data
       </div>
@@ -69,7 +69,7 @@ const WaterLevelChart: React.FC<WaterLevelChartProps> = ({
   const trend = currentValue > previousValue ? '↗️' : currentValue < previousValue ? '↘️' : '→';
 
   return (
-    <div className="w-full relative" style={{ height: `${height}px` }}>
+    <div className="w-full relative break-words whitespace-normal" style={{ height: `${height}px` }}>
       <svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0">
         {/* Background grid */}
         {!forTooltip && (
@@ -116,9 +116,9 @@ const WaterLevelChart: React.FC<WaterLevelChartProps> = ({
       {/* Value display */}
       {forTooltip && (
         <div className="absolute inset-0 flex items-center justify-center">
-          <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium shadow-sm border">
+          <div className="bg-white/90 backdrop-blur-sm px-2 py-1 rounded text-xs font-medium shadow-sm border break-words whitespace-normal">
             <div className="flex items-center gap-2">
-              <span>{currentValue?.toFixed(2)} ft {trend}</span>
+              <span className="break-words whitespace-normal">{currentValue?.toFixed(2)} ft {trend}</span>
             </div>
           </div>
         </div>

@@ -166,51 +166,55 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
         }}
       >
         <div
-          className={`bg-white rounded-lg shadow-lg border-2 p-2 pointer-events-auto relative z-30 ${getStatusBgColor(site.waterLevelStatus || 'unknown')} select-none`}
+          className={`bg-white rounded-lg shadow-lg border-2 p-2 md:p-3 pointer-events-auto relative z-30 ${getStatusBgColor(site.waterLevelStatus || 'unknown')} select-none overflow-hidden`}
           style={{
-            width: '320px',
-            fontSize: '14px',
+            width: '370px',
+            fontSize: '13px',
+            maxWidth: '99vw',
+            boxSizing: 'border-box',
           }}
         >
           {/* Site Info Header */}
           <div className="font-semibold text-gray-800 mb-1 truncate leading-tight">
-            {site.name.length > 20 ? site.name.substring(0, 20) + '...' : site.name}
+            <span className="text-base md:text-lg break-words whitespace-normal">{site.name}</span>
           </div>
           {/* Current Level */}
           <div className="text-gray-600 mb-2 flex items-center justify-between">
-            <span>{site.waterLevel ? `${site.waterLevel.toFixed(1)} ft` : 'No data'}</span>
+            <span className="text-sm md:text-base">{site.waterLevel ? `${site.waterLevel.toFixed(1)} ft` : 'No data'}</span>
             <span className={`px-1 py-0.5 rounded text-white text-xs ${
               site.waterLevelStatus === 'high' ? 'bg-red-600' :
               site.waterLevelStatus === 'normal' ? 'bg-green-600' :
               site.waterLevelStatus === 'low' ? 'bg-yellow-600' : 'bg-gray-600'
-            }`}>
+            } text-xs md:text-sm`}>
               {site.waterLevelStatus?.charAt(0).toUpperCase() || 'U'}
             </span>
           </div>
           {/* Chart */}
           <div className="h-20 w-full mb-1">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
-                <Line
-                  type="monotone"
-                  dataKey="value"
-                  stroke={getChartColor(site.waterLevelStatus || 'unknown')}
-                  strokeWidth={1.5}
-                  dot={false}
-                  name="Water Level"
-                />
-                {site.floodStage && (
-                  <ReferenceLine y={site.floodStage} stroke="#ef4444" strokeDasharray="4 2" label={{ value: 'Flood', position: 'right', fill: '#ef4444', fontSize: 10 }} />
-                )}
-                {site.recordStage && (
-                  <ReferenceLine y={site.recordStage} stroke="#6366f1" strokeDasharray="2 2" label={{ value: 'Record', position: 'right', fill: '#6366f1', fontSize: 10 }} />
-                )}
-                <Legend verticalAlign="top" height={20} iconType="plainline"/>
-              </LineChart>
-            </ResponsiveContainer>
+            <div style={{width: '100%', height: '80px', overflow: 'hidden'}}>
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
+                  <Line
+                    type="monotone"
+                    dataKey="value"
+                    stroke={getChartColor(site.waterLevelStatus || 'unknown')}
+                    strokeWidth={1.5}
+                    dot={false}
+                    name="Water Level"
+                  />
+                  {site.floodStage && (
+                    <ReferenceLine y={site.floodStage} stroke="#ef4444" strokeDasharray="4 2" label={{ value: 'Flood', position: 'right', fill: '#ef4444', fontSize: 10 }} />
+                  )}
+                  {site.recordStage && (
+                    <ReferenceLine y={site.recordStage} stroke="#6366f1" strokeDasharray="2 2" label={{ value: 'Record', position: 'right', fill: '#6366f1', fontSize: 10 }} />
+                  )}
+                  <Legend verticalAlign="top" height={20} iconType="plainline"/>
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
           </div>
           {/* Time indicator */}
-          <div className="text-gray-500 text-center text-xs">{globalTrendHours}hr trend</div>
+          <div className="text-gray-500 text-center text-xs md:text-sm">{globalTrendHours}hr trend</div>
         </div>
       </div>
     </>

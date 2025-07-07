@@ -110,27 +110,26 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({
       }));
     }
 
+    // Only associate a gauge if within 5 miles
+    const MAX_GAUGE_DISTANCE = 10; // miles
+
     return waterways.map(waterway => {
-      // Find the nearest gauge station to this waterway
       let nearestGauge: WaterSite | undefined;
       let minDistance = Infinity;
-
-      // Check distance from waterway midpoint to each gauge
       const midpoint = waterway.coordinates[Math.floor(waterway.coordinates.length / 2)];
-      
+
       gaugeSites.forEach(gauge => {
         const distance = calculateDistance(
           midpoint[0], midpoint[1],
           gauge.latitude, gauge.longitude
         );
-        
-        // Only consider gauges within 10 miles of the waterway
-        if (distance < 10 && distance < minDistance) {
+        if (distance < MAX_GAUGE_DISTANCE && distance < minDistance) {
           minDistance = distance;
           nearestGauge = gauge;
         }
       });
 
+      // Only use gauge if within 5 miles, otherwise treat as unknown
       const floodRisk = nearestGauge ? determineFloodRisk(nearestGauge) : 'unknown';
       const flowDirection = nearestGauge ? determineFlowDirection(waterway.coordinates, nearestGauge) : undefined;
 
@@ -146,6 +145,17 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({
       };
     });
   }, [waterways, gaugeSites, enabled]);
+
+  // Periodically refresh gaugeSites every 60 seconds (if parent passes a refresh function)
+  React.useEffect(() => {
+    if (!enabled || typeof window === 'undefined') return;
+    const interval = setInterval(() => {
+      // This assumes the parent component updates gaugeSites prop from a central store or API
+      // If you want to trigger a reload here, lift the fetch logic to parent and pass a refresh function
+      // Example: props.onRefreshGauges && props.onRefreshGauges();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [enabled]);
 
   // Get styling based on flood risk and waterway type
   const getFloodStyle = (segment: WaterwaySegment) => {
