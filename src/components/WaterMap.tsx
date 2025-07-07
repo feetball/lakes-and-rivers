@@ -100,47 +100,8 @@ export default function WaterMap() {
   // Load data when trend hours changes OR when map moves to new area
   const [lastLoadedBounds, setLastLoadedBounds] = useState<any>(null);
   
-  useEffect(() => {
-    const timeoutId = setTimeout(() => {
-      loadWaterSites();
-    }, 300); // Debounce API calls by 300ms
-
-    return () => clearTimeout(timeoutId);
-  }, [globalTrendHours]);
-
-  // Callback to handle map bounds changes from MapView
-  const handleMapBoundsChange = useCallback(async (bounds: any) => {
-    // Check if we need to load new data (bounds changed significantly)
-    if (!lastLoadedBounds || 
-        Math.abs(bounds.north - lastLoadedBounds.north) > 0.2 ||
-        Math.abs(bounds.south - lastLoadedBounds.south) > 0.2 ||
-        Math.abs(bounds.east - lastLoadedBounds.east) > 0.2 ||
-        Math.abs(bounds.west - lastLoadedBounds.west) > 0.2) {
-      
-      console.log('Map moved significantly, loading new data for bounds:', bounds);
-      setLastLoadedBounds(bounds);
-      
-      // Load both gauge sites and waterways for the new area
-      await Promise.all([
-        loadWaterSitesForBounds(bounds),
-        loadWaterwaysForBounds(bounds)
-      ]);
-    }
-  }, [lastLoadedBounds, globalTrendHours]);
-
-  // Load waterways for initial Austin area on mount
-  useEffect(() => {
-    const austinBounds = {
-      north: parseFloat((30.2672 + 1.45).toFixed(6)),  // ~31.717
-      south: parseFloat((30.2672 - 1.45).toFixed(6)),  // ~28.817
-      east: parseFloat((-97.7431 + 1.45).toFixed(6)),  // ~-96.293
-      west: parseFloat((-97.7431 - 1.45).toFixed(6))   // ~-99.193
-    };
-    loadWaterwaysForBounds(austinBounds);
-    setLastLoadedBounds(austinBounds);
-  }, []);
-
-  const loadWaterwaysForBounds = async (bbox: any) => {
+  // Define loading functions that will be used in handleMapBoundsChange
+  const loadWaterwaysForBounds = useCallback(async (bbox: any) => {
     try {
       console.log('Loading waterways for bounds:', bbox);
       
@@ -152,9 +113,9 @@ export default function WaterMap() {
       console.error('Error loading waterways:', err);
       // Don't set error state for waterways, just continue without them
     }
-  };
+  }, []);
 
-  const loadWaterSitesForBounds = async (bbox: any) => {
+  const loadWaterSitesForBounds = useCallback(async (bbox: any) => {
     try {
       setLoading(true);
       setError(null);
@@ -188,7 +149,61 @@ export default function WaterMap() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [globalTrendHours]);
+  
+  useEffect(() => {
+    // When trend hours change, reload data for the current bounds if available
+    if (lastLoadedBounds) {
+      const timeoutId = setTimeout(() => {
+        loadWaterSitesForBounds(lastLoadedBounds);
+      }, 300); // Debounce API calls by 300ms
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [globalTrendHours, lastLoadedBounds, loadWaterSitesForBounds]);
+
+  // Callback to handle map bounds changes from MapView
+  const handleMapBoundsChange = useCallback(async (bounds: any) => {
+    console.log('handleMapBoundsChange called with bounds:', bounds);
+    console.log('lastLoadedBounds:', lastLoadedBounds);
+    
+    // Check if we need to load new data (bounds changed significantly)
+    if (!lastLoadedBounds || 
+        Math.abs(bounds.north - lastLoadedBounds.north) > 0.05 ||
+        Math.abs(bounds.south - lastLoadedBounds.south) > 0.05 ||
+        Math.abs(bounds.east - lastLoadedBounds.east) > 0.05 ||
+        Math.abs(bounds.west - lastLoadedBounds.west) > 0.05) {
+      
+      console.log('Map moved significantly, loading new data for bounds:', bounds);
+      setLastLoadedBounds(bounds);
+      
+      // Load both gauge sites and waterways for the new area
+      await Promise.all([
+        loadWaterSitesForBounds(bounds),
+        loadWaterwaysForBounds(bounds)
+      ]);
+    } else {
+      console.log('Map movement too small, not loading new data');
+    }
+  }, [lastLoadedBounds, loadWaterSitesForBounds, loadWaterwaysForBounds]);
+
+  // Load initial Austin area data on mount
+  useEffect(() => {
+    const austinBounds = {
+      north: parseFloat((30.2672 + 1.45).toFixed(6)),  // ~31.717
+      south: parseFloat((30.2672 - 1.45).toFixed(6)),  // ~28.817
+      east: parseFloat((-97.7431 + 1.45).toFixed(6)),  // ~-96.293
+      west: parseFloat((-97.7431 - 1.45).toFixed(6))   // ~-99.193
+    };
+    
+    // Load both water sites and waterways for initial area
+    Promise.all([
+      loadWaterSitesForBounds(austinBounds),
+      loadWaterwaysForBounds(austinBounds)
+    ]);
+    
+    setLastLoadedBounds(austinBounds);
+  }, [loadWaterSitesForBounds, loadWaterwaysForBounds]);
 
   // Utility function to update water level status based on flood stages
   const updateWaterLevelStatus = (site: WaterSite): WaterSite => {
@@ -217,18 +232,6 @@ export default function WaterMap() {
     return { ...site, waterLevelStatus };
   };
 
-  const loadWaterSites = async () => {
-    // Load sites for initial Austin area
-    const austinBbox = {
-      north: parseFloat((30.2672 + 1.0).toFixed(6)),  // ~31.267
-      south: parseFloat((30.2672 - 1.0).toFixed(6)),  // ~29.267 
-      east: parseFloat((-97.7431 + 1.0).toFixed(6)),  // ~-96.743
-      west: parseFloat((-97.7431 - 1.0).toFixed(6))   // ~-98.743
-    };
-    
-    await loadWaterSitesForBounds(austinBbox);
-  };
-
   const handleStateChange = async (state: string) => {
     setSelectedState(state);
     // You could implement state-specific loading here
@@ -251,7 +254,7 @@ export default function WaterMap() {
         <div className="text-center">
           <p className="text-lg text-red-700">{error}</p>
           <button 
-            onClick={loadWaterSites}
+            onClick={() => lastLoadedBounds && loadWaterSitesForBounds(lastLoadedBounds)}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Retry
@@ -378,7 +381,7 @@ export default function WaterMap() {
               </div>
             </div>
             <button 
-              onClick={loadWaterSites}
+              onClick={() => lastLoadedBounds && loadWaterSitesForBounds(lastLoadedBounds)}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
             >
               Refresh
