@@ -57,4 +57,4 @@ ENV HOSTNAME "0.0.0.0"
 # server.js is created by next build from the standalone output
 # https://nextjs.org/docs/pages/api-reference/next-config-js/output
 # Run preload script before starting the server
-CMD node ./src/lib/preloadTexasData.ts && node server.js
+CMD node ./src/lib/preloadTexasData.js && node server.js
