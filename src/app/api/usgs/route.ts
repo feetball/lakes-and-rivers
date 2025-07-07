@@ -1,3 +1,13 @@
+// Validate bounding box for USGS API
+function isValidBbox(bbox: { north: number; south: number; east: number; west: number }): boolean {
+  // Longitude: -180 to 180, Latitude: -90 to 90, west < east, south < north
+  return (
+    bbox.west < bbox.east &&
+    bbox.south < bbox.north &&
+    bbox.west >= -180 && bbox.east <= 180 &&
+    bbox.south >= -90 && bbox.north <= 90
+  );
+}
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { cacheGet, cacheSet, generateBboxCacheKey, CACHE_TTL } from '@/lib/redis';
@@ -155,6 +165,22 @@ export async function GET(request: NextRequest) {
       west: -99.0     // West boundary (covers Hill Country)
     };
     const activeBbox = hasValidBbox ? bbox : defaultBbox;
+
+    // Validate bounding box before making USGS API call
+    if (!isValidBbox(activeBbox)) {
+      console.warn('Skipping USGS API call due to invalid bbox:', activeBbox);
+      return NextResponse.json(
+        { error: 'Invalid bounding box for USGS API', sites: [], cached: false },
+        {
+          status: 400,
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+        }
+      );
+    }
 
     // Get time range parameter (in hours), default to 8 hours
     const hours = parseInt(searchParams.get('hours') || '8');
