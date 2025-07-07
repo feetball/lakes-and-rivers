@@ -25,7 +25,7 @@ services:
       REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-feetball}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
       ALLOW_LIVE_USGS_FETCH: ${ALLOW_LIVE_USGS_FETCH}
     ports:
@@ -48,7 +48,7 @@ services:
       REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-feetball}
+      ADMIN_USERNAME: ${ADMIN_USERNAME}
       ADMIN_PASSWORD: ${ADMIN_PASSWORD}
     command: ["sh", "-c", "./wait-for-redis.sh node preload-data.js"]
 

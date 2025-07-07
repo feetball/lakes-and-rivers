@@ -26,7 +26,7 @@ This project uses environment variables for sensitive configuration:
 
 #### Cache Admin Access
 - URL: `/admin/cache.html`
-- Username: `feetball` (configurable via `ADMIN_USERNAME`)
+- Username: ADMIN_USERNAME environment variable
 - Password: From `ADMIN_PASSWORD` environment variable
 
 #### Security Best Practices

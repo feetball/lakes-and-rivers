@@ -38,11 +38,6 @@ NODE_ENV=production
 PORT=3000
 REDIS_URL=redis://... (automatically set by Railway Redis addon)
 
-# Cache Admin Credentials (IMPORTANT - SET THESE!)
-ADMIN_USERNAME=feetball
-ADMIN_PASSWORD=0deacon5
-```
-
 **⚠️ Security Note:** Set a strong `ADMIN_PASSWORD` to protect the cache admin interface at `/admin/cache.html`
 
 ### 5. Custom Domain (Optional)

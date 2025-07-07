@@ -17,7 +17,7 @@ function authenticate(request: NextRequest): boolean {
     const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
     const [username, password] = credentials.split(':');
 
-    const adminUsername = process.env.ADMIN_USERNAME || 'feetball';
+    const adminUsername = process.env.ADMIN_USERNAME;
     const adminPassword = process.env.ADMIN_PASSWORD;
 
     if (!adminPassword) {

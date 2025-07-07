@@ -109,10 +109,10 @@ npm run flood-update-verbose
 ### Admin Flood Stage Management
 ```bash
 # Audit all sites (requires authentication)
-curl -u "feetball:password" "http://localhost:3001/api/admin/flood-stages?action=audit"
+curl -u "username:password" "http://localhost:3001/api/admin/flood-stages?action=audit"
 
 # Update specific site
-curl -u "feetball:password" -X POST "http://localhost:3001/api/admin/flood-stages" \
+curl -u "username:password" -X POST "http://localhost:3001/api/admin/flood-stages" \
   -H "Content-Type: application/json" \
   -d '{"action":"update","siteId":"08105300","floodStages":{...}}'
 ```
