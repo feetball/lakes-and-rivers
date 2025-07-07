@@ -16,9 +16,31 @@ export async function GET(request: NextRequest) {
       west: parseFloat(searchParams.get('west') || '0'),
     };
 
+    // Texas bounding box (approximate)
+    const TEXAS_BBOX = { north: 36.5, south: 25.8, east: -93.5, west: -106.7 };
     // Generate cache key for this bounding box
     const cacheKey = generateBboxCacheKey(bbox);
-    
+
+    // If bbox matches Texas, serve from preloaded cache
+    const isTexasBbox = Math.abs(bbox.north - TEXAS_BBOX.north) < 0.2 &&
+      Math.abs(bbox.south - TEXAS_BBOX.south) < 0.2 &&
+      Math.abs(bbox.east - TEXAS_BBOX.east) < 0.2 &&
+      Math.abs(bbox.west - TEXAS_BBOX.west) < 0.2;
+    if (isTexasBbox) {
+      const texasKey = 'waterways:texas:all';
+      const cachedTexas = await cacheGet(texasKey);
+      if (cachedTexas) {
+        recordCacheStat('waterways', true);
+        return NextResponse.json({ waterways: cachedTexas, cached: true }, {
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+        });
+      }
+    }
+
     // Try to get from cache first
     const cachedWaterways = await cacheGet(cacheKey);
     if (cachedWaterways) {

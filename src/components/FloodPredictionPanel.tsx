@@ -24,7 +24,7 @@ const FloodPredictionPanel: React.FC<FloodPredictionPanelProps> = ({
   waterways, 
   enabled,
   onClose
-}) => {
+}: FloodPredictionPanelProps) => {
   // Define downstream locations for each gauge (simplified)
   function getDownstreamLocations(site: WaterSite) {
     const locations: { name: string; distance: number }[] = [];

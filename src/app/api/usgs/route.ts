@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
       west: parseFloat(parseFloat(searchParams.get('west') || '0').toFixed(6)),
     };
 
+    // Texas bounding box (approximate)
+    const TEXAS_BBOX = { north: 36.5, south: 25.8, east: -93.5, west: -106.7 };
     // If no valid bounding box is provided, use Central Texas as default
     const hasValidBbox = bbox.north !== 0 || bbox.south !== 0 || bbox.east !== 0 || bbox.west !== 0;
     const defaultBbox = {
@@ -27,8 +29,27 @@ export async function GET(request: NextRequest) {
       east: -97.0,    // East boundary
       west: -99.0     // West boundary (covers Hill Country)
     };
-    
     const activeBbox = hasValidBbox ? bbox : defaultBbox;
+
+    // If bbox matches Texas, serve from preloaded cache
+    const isTexasBbox = Math.abs(activeBbox.north - TEXAS_BBOX.north) < 0.2 &&
+      Math.abs(activeBbox.south - TEXAS_BBOX.south) < 0.2 &&
+      Math.abs(activeBbox.east - TEXAS_BBOX.east) < 0.2 &&
+      Math.abs(activeBbox.west - TEXAS_BBOX.west) < 0.2;
+    if (isTexasBbox) {
+      const texasKey = 'usgs:stations:texas:all';
+      const cachedTexas = await cacheGet(texasKey);
+      if (cachedTexas) {
+        recordCacheStat('usgs', true);
+        return NextResponse.json({ ...cachedTexas, cached: true }, {
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+        });
+      }
+    }
 
     // Get time range parameter (in hours), default to 8 hours
     const hours = parseInt(searchParams.get('hours') || '8');
@@ -39,11 +60,10 @@ export async function GET(request: NextRequest) {
     // Try to get from cache first
     console.log('Checking cache for USGS data:', cacheKey);
     const cachedData = await cacheGet(cacheKey);
-    
     if (cachedData) {
       recordCacheStat('usgs', true);
       console.log('Returning cached USGS data:', cacheKey);
-      return NextResponse.json({...cachedData, cached: true}, {
+      return NextResponse.json({ ...cachedData, cached: true }, {
         headers: {
           'Access-Control-Allow-Origin': '*',
           'Access-Control-Allow-Methods': 'GET',

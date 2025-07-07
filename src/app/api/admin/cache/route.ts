@@ -2,11 +2,29 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
 
 // In-memory cache hit/miss counters (reset on server restart)
+
 let cacheStats = {
   waterways: { hit: 0, miss: 0 },
   usgs: { hit: 0, miss: 0 },
   other: { hit: 0, miss: 0 }
 };
+
+// Track Texas preload status
+let texasPreloadStatus = {
+  usgs: null as null | boolean,
+  waterways: null as null | boolean,
+  usgsError: null as null | string,
+  waterwaysError: null as null | string
+};
+
+// Exported for use in health/preload
+export function setTexasPreloadStatus(type: 'usgs' | 'waterways', success: boolean, error?: string) {
+  texasPreloadStatus[type] = success;
+  if (!success && error) {
+    if (type === 'usgs') texasPreloadStatus.usgsError = error;
+    if (type === 'waterways') texasPreloadStatus.waterwaysError = error;
+  }
+}
 
 // Exported for use in API routes
 export function recordCacheStat(type: 'waterways' | 'usgs' | 'other', hit: boolean) {
@@ -105,6 +123,7 @@ export async function GET(request: NextRequest) {
       cache: cacheInfo,
       cacheStats,
       redisStats,
+      texasPreloadStatus,
       actions: {
         clear_all: 'POST /api/admin/cache with action=clear_all',
         clear_waterways: 'POST /api/admin/cache with action=clear_waterways',

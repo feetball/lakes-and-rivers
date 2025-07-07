@@ -43,6 +43,7 @@ export async function getRedisClient() {
       redis = null;
     }
   }
+
   return redis;
 }
 
@@ -161,3 +162,184 @@ export const CACHE_TTL = {
   SITE_METADATA: 24 * 60 * 60, // 24 hours - site info rarely changes
   FLOOD_STAGES: 7 * 24 * 60 * 60 // 7 days - flood stage data
 };
+
+
+
+// Texas bounding box (approximate)
+export const TEXAS_BBOX = {
+  north: 36.5,
+  south: 25.8,
+  east: -93.5,
+  west: -106.7
+};
+
+// Fetch and cache all Texas USGS stations
+export async function cacheTexasStations() {
+  // Batch the Texas bbox into a grid (4x4)
+  const gridRows = 4;
+  const gridCols = 4;
+  const latStep = (TEXAS_BBOX.north - TEXAS_BBOX.south) / gridRows;
+  const lonStep = (TEXAS_BBOX.east - TEXAS_BBOX.west) / gridCols;
+  const key = 'usgs:stations:texas:all';
+  let allTimeSeries = [];
+  let allIds = new Set();
+  let totalFetched = 0;
+  // Clamp helpers
+  function clamp(val: number, min: number, max: number) {
+    return Math.max(min, Math.min(max, val));
+  }
+  function isValidBbox(west: number, south: number, east: number, north: number) {
+    // USGS expects: west < east, south < north, all within valid lat/lon
+    return (
+      west < east &&
+      south < north &&
+      west >= -180 && east <= 180 &&
+      south >= -90 && north <= 90
+    );
+  }
+  try {
+    console.log('[PRELOAD] Fetching all Texas USGS stations in batches...');
+    for (let row = 0; row < gridRows; row++) {
+      for (let col = 0; col < gridCols; col++) {
+        let south = TEXAS_BBOX.south + row * latStep;
+        let north = south + latStep;
+        let west = TEXAS_BBOX.west + col * lonStep;
+        let east = west + lonStep;
+        // Clamp to valid lat/lon
+        south = clamp(south, -90, 90);
+        north = clamp(north, -90, 90);
+        west = clamp(west, -180, 180);
+        east = clamp(east, -180, 180);
+        // Round to 7 decimal places for USGS API
+        const round7 = (v: number) => Math.round(v * 1e7) / 1e7;
+        south = round7(south);
+        north = round7(north);
+        west = round7(west);
+        east = round7(east);
+        if (!isValidBbox(west, south, east, north)) {
+          console.warn(`[PRELOAD] Skipping invalid bbox: W${west} S${south} E${east} N${north}`);
+          continue;
+        }
+        const usgsUrl = `https://waterservices.usgs.gov/nwis/iv/?format=json&bBox=${west},${south},${east},${north}&parameterCd=00065,00060,00062,00054,62614&siteStatus=active`;
+        console.log(`[PRELOAD] USGS batch row ${row} col ${col} bbox: W${west} S${south} E${east} N${north}`);
+        // Retry logic and delay
+        let attempt = 0;
+        const maxAttempts = 3;
+        let res = null;
+        let fetchError = null;
+        while (attempt < maxAttempts) {
+          try {
+            res = await fetch(usgsUrl);
+            if (res.ok) break;
+            fetchError = `[PRELOAD] USGS batch row ${row} col ${col} failed: ${res.status} ${await res.text()}`;
+          } catch (err) {
+            fetchError = `[PRELOAD] USGS batch row ${row} col ${col} fetch error: ${err}`;
+          }
+          attempt++;
+          if (attempt < maxAttempts) {
+            console.warn(`${fetchError} (retrying in 1s, attempt ${attempt+1}/${maxAttempts})`);
+            await new Promise(r => setTimeout(r, 1000));
+          } else {
+            console.warn(`${fetchError} (giving up after ${maxAttempts} attempts)`);
+          }
+        }
+        if (!res || !res.ok) continue;
+        try {
+          const data = await res.json();
+          if (data && data.value && data.value.timeSeries && data.value.timeSeries.length > 0) {
+            let newCount = 0;
+            for (const ts of data.value.timeSeries) {
+              if (!allIds.has(ts.sourceInfo.siteCode[0]?.value)) {
+                allTimeSeries.push(ts);
+                allIds.add(ts.sourceInfo.siteCode[0]?.value);
+                newCount++;
+              }
+            }
+            totalFetched += data.value.timeSeries.length;
+            console.log(`[PRELOAD] USGS batch row ${row} col ${col} timeSeries: ${data.value.timeSeries.length}, new unique: ${newCount}`);
+          } else {
+            console.warn(`[PRELOAD] USGS batch row ${row} col ${col} data missing or empty`);
+          }
+        } catch (err) {
+          console.warn(`[PRELOAD] USGS batch row ${row} col ${col} JSON parse error:`, err);
+        }
+        // Add a delay between batches to avoid rate limiting
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    console.log(`[PRELOAD] Total unique USGS timeSeries: ${allTimeSeries.length}, total fetched: ${totalFetched}`);
+    // Compose the merged data in the same format as the original API
+    const mergedData = { value: { timeSeries: allTimeSeries } };
+    const cacheResult = await cacheSet(key, mergedData, CACHE_TTL.WATERWAYS);
+    console.log('[PRELOAD] USGS cache set result:', cacheResult);
+    return mergedData;
+  } catch (err) {
+    console.error('Failed to preload Texas USGS stations:', err);
+    return null;
+  }
+}
+
+// Fetch and cache all Texas waterways (Overpass API)
+export async function cacheTexasWaterways() {
+  // Split Texas bbox into a grid (e.g., 4x4 = 16 queries)
+  const gridRows = 4;
+  const gridCols = 4;
+  const latStep = (TEXAS_BBOX.north - TEXAS_BBOX.south) / gridRows;
+  const lonStep = (TEXAS_BBOX.east - TEXAS_BBOX.west) / gridCols;
+  const overpassUrl = 'https://overpass-api.de/api/interpreter';
+  const key = 'waterways:texas:all';
+  let allElements: any[] = [];
+  let allIds = new Set();
+  try {
+    console.log('[PRELOAD] Fetching all Texas waterways from Overpass API in batches...');
+    for (let row = 0; row < gridRows; row++) {
+      for (let col = 0; col < gridCols; col++) {
+        const south = TEXAS_BBOX.south + row * latStep;
+        const north = south + latStep;
+        const west = TEXAS_BBOX.west + col * lonStep;
+        const east = west + lonStep;
+        const overpassQuery = `
+          [out:json][timeout:180];
+          (
+            way["waterway"](${south},${west},${north},${east});
+            relation["waterway"](${south},${west},${north},${east});
+          );
+          out body;
+          >;
+          out skel qt;
+        `;
+        console.log(`[PRELOAD] Overpass batch row ${row} col ${col} bbox: S${south} W${west} N${north} E${east}`);
+        const res = await fetch(overpassUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: `data=${encodeURIComponent(overpassQuery)}`
+        });
+        if (!res.ok) {
+          console.warn(`[PRELOAD] Overpass batch row ${row} col ${col} failed:`, res.status);
+          continue;
+        }
+        const data = await res.json();
+        if (data && data.elements && data.elements.length > 0) {
+          let newCount = 0;
+          for (const el of data.elements) {
+            if (!allIds.has(el.id)) {
+              allElements.push(el);
+              allIds.add(el.id);
+              newCount++;
+            }
+          }
+          console.log(`[PRELOAD] Overpass batch row ${row} col ${col} elements: ${data.elements.length}, new unique: ${newCount}`);
+        } else {
+          console.warn(`[PRELOAD] Overpass batch row ${row} col ${col} data missing or empty`);
+        }
+      }
+    }
+    console.log(`[PRELOAD] Total unique Overpass elements: ${allElements.length}`);
+    const cacheResult = await cacheSet(key, { elements: allElements }, CACHE_TTL.WATERWAYS);
+    console.log('[PRELOAD] Overpass cache set result:', cacheResult);
+    return { elements: allElements };
+  } catch (err) {
+    console.error('Failed to preload Texas waterways:', err);
+    return null;
+  }
+}
