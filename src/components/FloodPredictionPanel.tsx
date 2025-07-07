@@ -25,6 +25,61 @@ const FloodPredictionPanel: React.FC<FloodPredictionPanelProps> = ({
   enabled,
   onClose
 }) => {
+  // Define downstream locations for each gauge (simplified)
+  function getDownstreamLocations(site: WaterSite) {
+    const locations: { name: string; distance: number }[] = [];
+    
+    if (site.name.includes('Guadalupe')) {
+      if (site.name.includes('Comfort')) {
+        locations.push(
+          { name: 'Spring Branch', distance: 15 },
+          { name: 'Canyon Lake', distance: 35 },
+          { name: 'New Braunfels', distance: 45 },
+          { name: 'Seguin', distance: 60 },
+          { name: 'Gonzales', distance: 85 }
+        );
+      } else if (site.name.includes('Spring Branch')) {
+        locations.push(
+          { name: 'Canyon Lake', distance: 20 },
+          { name: 'New Braunfels', distance: 30 },
+          { name: 'Seguin', distance: 45 }
+        );
+      }
+    } else if (site.name.includes('Blanco')) {
+      locations.push(
+        { name: 'San Marcos River', distance: 8 },
+        { name: 'Guadalupe River confluence', distance: 12 },
+        { name: 'New Braunfels area', distance: 25 }
+      );
+    } else if (site.name.includes('Pedernales')) {
+      locations.push(
+        { name: 'Johnson City', distance: 12 },
+        { name: 'Dripping Springs', distance: 35 },
+        { name: 'Austin (Lake Austin)', distance: 50 }
+      );
+    } else if (site.name.includes('Colorado')) {
+      locations.push(
+        { name: 'Bastrop', distance: 25 },
+        { name: 'La Grange', distance: 65 },
+        { name: 'Columbus', distance: 85 }
+      );
+    } else if (site.name.includes('Llano')) {
+      locations.push(
+        { name: 'Llano City', distance: 8 },
+        { name: 'Kingsland', distance: 25 },
+        { name: 'Marble Falls', distance: 35 }
+      );
+    } else {
+      // Generic downstream locations for unknown rivers
+      locations.push(
+        { name: 'Downstream community', distance: 10 },
+        { name: 'Next major town', distance: 25 }
+      );
+    }
+    
+    return locations;
+  }
+
   const predictions = useMemo<FloodPrediction[]>(() => {
     if (!enabled) return [];
 
@@ -70,49 +125,6 @@ const FloodPredictionPanel: React.FC<FloodPredictionPanelProps> = ({
 
     return predictions.sort((a, b) => a.distance - b.distance);
   }, [gaugeSites, enabled]);
-
-  // Define downstream locations for each gauge (simplified)
-  const getDownstreamLocations = (site: WaterSite) => {
-    const locations: { name: string; distance: number }[] = [];
-    
-    if (site.name.includes('Guadalupe')) {
-      if (site.name.includes('Comfort')) {
-        locations.push(
-          { name: 'Spring Branch', distance: 15 },
-          { name: 'Canyon Lake', distance: 35 },
-          { name: 'New Braunfels', distance: 45 },
-          { name: 'Seguin', distance: 60 },
-          { name: 'Gonzales', distance: 85 }
-        );
-      } else if (site.name.includes('Spring Branch')) {
-        locations.push(
-          { name: 'Canyon Lake', distance: 20 },
-          { name: 'New Braunfels', distance: 30 },
-          { name: 'Seguin', distance: 45 }
-        );
-      }
-    } else if (site.name.includes('Blanco')) {
-      locations.push(
-        { name: 'San Marcos River', distance: 8 },
-        { name: 'Guadalupe River confluence', distance: 12 },
-        { name: 'New Braunfels area', distance: 25 }
-      );
-    } else if (site.name.includes('Pedernales')) {
-      locations.push(
-        { name: 'Dripping Springs area', distance: 15 },
-        { name: 'Lake Travis', distance: 25 },
-        { name: 'Colorado River confluence', distance: 30 }
-      );
-    } else if (site.name.includes('San Gabriel')) {
-      locations.push(
-        { name: 'Round Rock', distance: 12 },
-        { name: 'Taylor', distance: 20 },
-        { name: 'Granger', distance: 35 }
-      );
-    }
-    
-    return locations;
-  };
 
   if (!enabled || predictions.length === 0) return null;
 

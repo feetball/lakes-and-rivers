@@ -40,6 +40,7 @@ const MapOverlayHandler: React.FC<{ sites: WaterSite[]; globalTrendHours: number
   const map = useMap();
   const [overlayPositions, setOverlayPositions] = useState<Array<{ site: WaterSite; x: number; y: number; gaugeX: number; gaugeY: number; index: number }>>([]);
   const [mounted, setMounted] = useState(false);
+  const boundsUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -375,11 +376,32 @@ const MapView: React.FC<MapViewProps> = ({
       }
     };
     
-    map.on('moveend zoomend', updateVisibleSitesAndBounds);
+    // Add debounced update for more responsive bounds checking
+    const debouncedUpdate = () => {
+      if (boundsUpdateTimeoutRef.current) {
+        clearTimeout(boundsUpdateTimeoutRef.current);
+      }
+      boundsUpdateTimeoutRef.current = setTimeout(updateVisibleSitesAndBounds, 100); // 100ms debounce
+    };
+    
+    const immediateUpdate = () => {
+      if (boundsUpdateTimeoutRef.current) {
+        clearTimeout(boundsUpdateTimeoutRef.current);
+      }
+      updateVisibleSitesAndBounds();
+    };
+    
+    // Use immediate update for end events, debounced for move events
+    map.on('moveend zoomend', immediateUpdate);
+    map.on('move zoom', debouncedUpdate);
     updateVisibleSitesAndBounds();
     
     return () => {
-      map.off('moveend zoomend', updateVisibleSitesAndBounds);
+      if (boundsUpdateTimeoutRef.current) {
+        clearTimeout(boundsUpdateTimeoutRef.current);
+      }
+      map.off('moveend zoomend', immediateUpdate);
+      map.off('move zoom', debouncedUpdate);
     };
   }, [sites, gaugeSitesVisible, onVisibilityStatsChange, onMapBoundsChange]);
 
