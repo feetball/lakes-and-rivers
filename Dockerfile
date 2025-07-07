@@ -46,6 +46,9 @@ RUN chown nextjs:nodejs .next
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
+# Copy startup script
+COPY --chown=nextjs:nodejs startup.js ./
+
 USER nextjs
 
 EXPOSE 3000
@@ -54,7 +57,5 @@ ENV PORT 3000
 # set hostname to localhost
 ENV HOSTNAME "0.0.0.0"
 
-# server.js is created by next build from the standalone output
-# https://nextjs.org/docs/pages/api-reference/next-config-js/output
-# Run preload script before starting the server
-CMD node ./src/lib/preloadTexasData.js && node server.js
+# Run startup script that handles preload and server startup
+CMD ["node", "startup.js"]
