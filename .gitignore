@@ -251,7 +251,6 @@ logs
 webpack-stats.json
 
 # Compressed files
-*.gz
 *.zip
 *.tar
 
