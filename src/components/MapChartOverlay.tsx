@@ -59,9 +59,31 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
 
   const { offsetX, offsetY } = calculateOffset();
   
-  // Final position (charts are not draggable)
-  const finalX = position.x + offsetX;
-  const finalY = position.y + offsetY;
+  // Calculate final position with viewport boundaries
+  const chartWidth = 370;
+  const chartHeight = 180;
+  const margin = 20; // Margin from viewport edges
+  
+  let finalX = position.x + offsetX;
+  let finalY = position.y + offsetY;
+  
+  // Constrain to viewport bounds
+  const viewportWidth = typeof window !== 'undefined' ? window.innerWidth : 1920;
+  const viewportHeight = typeof window !== 'undefined' ? window.innerHeight : 1080;
+  
+  // Adjust X position to stay within viewport
+  if (finalX - chartWidth/2 < margin) {
+    finalX = chartWidth/2 + margin;
+  } else if (finalX + chartWidth/2 > viewportWidth - margin) {
+    finalX = viewportWidth - chartWidth/2 - margin;
+  }
+  
+  // Adjust Y position to stay within viewport
+  if (finalY - chartHeight/2 < margin) {
+    finalY = chartHeight/2 + margin;
+  } else if (finalY + chartHeight/2 > viewportHeight - margin) {
+    finalY = viewportHeight - chartHeight/2 - margin;
+  }
   
   // Calculate arrow direction from chart to the EXACT gauge position
   const arrowDeltaX = gaugePosition.x - finalX;
@@ -110,8 +132,8 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
     }));
 
   // Calculate chart center and gauge position for SVG arrow
-  const chartWidth = 320;
-  const chartHeight = 180; // Approximate height of chart card
+  const svgChartWidth = 320;
+  const svgChartHeight = 180; // Approximate height of chart card
   const chartCenterX = finalX;
   const chartCenterY = finalY;
   const gaugeX = gaugePosition.x;
@@ -169,9 +191,12 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
           className={`bg-white rounded-lg shadow-lg border-2 p-2 md:p-3 pointer-events-auto relative z-30 ${getStatusBgColor(site.waterLevelStatus || 'unknown')} select-none overflow-hidden`}
           style={{
             width: '370px',
+            height: '180px',
             fontSize: '13px',
             maxWidth: '99vw',
+            maxHeight: '99vh',
             boxSizing: 'border-box',
+            contain: 'layout style paint',
           }}
         >
           {/* Site Info Header */}
@@ -190,8 +215,8 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
             </span>
           </div>
           {/* Chart */}
-          <div className="h-20 w-full mb-1">
-            <div style={{width: '100%', height: '80px', overflow: 'hidden'}}>
+          <div className="h-20 w-full mb-1 relative overflow-hidden">
+            <div style={{width: '100%', height: '80px', overflow: 'hidden', position: 'relative'}}>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={chartData} margin={{ top: 2, right: 2, left: 2, bottom: 2 }}>
                   <Line

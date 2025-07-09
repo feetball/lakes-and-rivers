@@ -1,12 +1,38 @@
 // Validate bounding box for USGS API
 function isValidBbox(bbox: { north: number; south: number; east: number; west: number }): boolean {
-  // Longitude: -180 to 180, Latitude: -90 to 90, west < east, south < north
-  return (
-    bbox.west < bbox.east &&
-    bbox.south < bbox.north &&
-    bbox.west >= -180 && bbox.east <= 180 &&
-    bbox.south >= -90 && bbox.north <= 90
-  );
+  // Basic coordinate validation
+  if (!(bbox.west < bbox.east &&
+        bbox.south < bbox.north &&
+        bbox.west >= -180 && bbox.east <= 180 &&
+        bbox.south >= -90 && bbox.north <= 90)) {
+    return false;
+  }
+
+  // USGS API specific size constraints
+  const width = bbox.east - bbox.west;
+  const height = bbox.north - bbox.south;
+  
+  // Maximum height is generally 10 degrees
+  if (height > 10) {
+    console.warn(`Bounding box height too large: ${height.toFixed(2)} degrees (max: 10)`);
+    return false;
+  }
+  
+  // Width constraints depend on latitude - USGS uses a formula based on latitude
+  // At higher latitudes, maximum width decreases due to meridian convergence
+  const centerLat = (bbox.north + bbox.south) / 2;
+  const latRadians = Math.abs(centerLat) * Math.PI / 180;
+  
+  // USGS formula approximation: max width decreases with cosine of latitude
+  // Base max width is ~3.5 degrees at equator, scaling down with latitude
+  const maxWidth = 3.5 * Math.cos(latRadians);
+  
+  if (width > maxWidth) {
+    console.warn(`Bounding box width too large: ${width.toFixed(2)} degrees (max: ${maxWidth.toFixed(2)} at lat ${centerLat.toFixed(1)})`);
+    return false;
+  }
+  
+  return true;
 }
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
@@ -147,6 +173,10 @@ function processUSGSResponse(responseData: any, hours: number): any[] {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    
+    // Get time range parameter (in hours), default to 8 hours
+    const hours = parseInt(searchParams.get('hours') || '8');
+    
     const bbox = {
       north: parseFloat(parseFloat(searchParams.get('north') || '0').toFixed(6)),
       south: parseFloat(parseFloat(searchParams.get('south') || '0').toFixed(6)),
@@ -168,22 +198,50 @@ export async function GET(request: NextRequest) {
 
     // Validate bounding box before making USGS API call
     if (!isValidBbox(activeBbox)) {
-      console.warn('Skipping USGS API call due to invalid bbox:', activeBbox);
-      return NextResponse.json(
-        { error: 'Invalid bounding box for USGS API', sites: [], cached: false },
-        {
-          status: 400,
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          },
+      console.warn('Bounding box too large for USGS API:', activeBbox);
+      
+      // Instead of failing, try to use a smaller default bounding box
+      const fallbackBbox = {
+        north: Math.min(activeBbox.north, activeBbox.south + 3.0),  // Limit height to 3 degrees
+        south: activeBbox.south,
+        east: Math.min(activeBbox.east, activeBbox.west + 2.0),    // Limit width to 2 degrees
+        west: activeBbox.west
+      };
+      
+      // Check if the fallback bbox is valid
+      if (isValidBbox(fallbackBbox)) {
+        console.log('Using fallback bounding box:', fallbackBbox);
+        // Update activeBbox to use the valid fallback
+        Object.assign(activeBbox, fallbackBbox);
+      } else {
+        // If even the fallback fails, return an error
+        console.warn('Even fallback bbox is invalid, using cached data only');
+        const cacheKey = `usgs:${generateBboxCacheKey(activeBbox)}:${hours}h`;
+        const cachedData = await cacheGet(cacheKey);
+        if (cachedData) {
+          recordCacheStat('usgs', true);
+          return NextResponse.json({ ...cachedData, cached: true }, {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          });
         }
-      );
+        
+        return NextResponse.json(
+          { error: 'Bounding box too large for USGS API and no cached data available', sites: [], cached: false },
+          {
+            status: 400,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          }
+        );
+      }
     }
-
-    // Get time range parameter (in hours), default to 8 hours
-    const hours = parseInt(searchParams.get('hours') || '8');
 
     // If bbox matches Texas, serve from preloaded cache
     const isTexasBbox = Math.abs(activeBbox.north - TEXAS_BBOX.north) < 0.2 &&
