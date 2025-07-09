@@ -87,8 +87,8 @@ Examples:
 async function fetchTexasUSGSStations() {
   console.log('[GENERATE] Fetching all Texas USGS stations...');
   
-  const gridRows = 4;
-  const gridCols = 4;
+  const gridRows = 6;
+  const gridCols = 6;
   const latStep = (TEXAS_BBOX.north - TEXAS_BBOX.south) / gridRows;
   const lonStep = (TEXAS_BBOX.east - TEXAS_BBOX.west) / gridCols;
   
@@ -189,8 +189,8 @@ async function fetchTexasUSGSStations() {
 async function fetchTexasWaterways() {
   console.log('[GENERATE] Fetching all Texas waterways...');
   
-  const gridRows = 4;
-  const gridCols = 4;
+  const gridRows = 6;
+  const gridCols = 6;
   const latStep = (TEXAS_BBOX.north - TEXAS_BBOX.south) / gridRows;
   const lonStep = (TEXAS_BBOX.east - TEXAS_BBOX.west) / gridCols;
   const overpassUrl = 'https://overpass-api.de/api/interpreter';

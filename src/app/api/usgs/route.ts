@@ -48,6 +48,101 @@ const ALLOW_LIVE_USGS_FETCH = process.env.ALLOW_LIVE_USGS_FETCH === 'true';
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
 
+// Utility functions for grid-based fetching
+function clamp(val: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, val));
+}
+
+function round7(v: number): number {
+  return Math.round(v * 1e7) / 1e7;
+}
+
+// Fetch data using grid approach to avoid USGS API size limits
+async function fetchUSGSDataWithGrid(
+  bbox: { north: number; south: number; east: number; west: number },
+  hours: number
+): Promise<any> {
+  console.log('Using grid-based fetch for large bounding box:', bbox);
+  
+  const gridRows = 6;
+  const gridCols = 6;
+  const latStep = (bbox.north - bbox.south) / gridRows;
+  const lonStep = (bbox.east - bbox.west) / gridCols;
+  
+  let allTimeSeries: any[] = [];
+  let allIds = new Set<string>();
+  let totalFetched = 0;
+  
+  for (let row = 0; row < gridRows; row++) {
+    for (let col = 0; col < gridCols; col++) {
+      let south = bbox.south + row * latStep;
+      let north = south + latStep;
+      let west = bbox.west + col * lonStep;
+      let east = west + lonStep;
+      
+      // Clamp and round coordinates
+      south = round7(clamp(south, -90, 90));
+      north = round7(clamp(north, -90, 90));
+      west = round7(clamp(west, -180, 180));
+      east = round7(clamp(east, -180, 180));
+      
+      const cellBbox = { west, south, east, north };
+      
+      if (!isValidBbox(cellBbox)) {
+        console.warn(`Skipping invalid grid cell: W${west} S${south} E${east} N${north}`);
+        continue;
+      }
+      
+      const period = `PT${hours}H`;
+      const url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060,00062,00054,62614&siteStatus=active&period=${period}&bBox=${west},${south},${east},${north}`;
+      
+      console.log(`Fetching grid cell [${row},${col}]: W${west} S${south} E${east} N${north}`);
+      
+      // Retry logic for each cell
+      let attempt = 0;
+      const maxAttempts = 3;
+      let success = false;
+      
+      while (attempt < maxAttempts && !success) {
+        try {
+          const response = await axios.get(url);
+          
+          if (response.data?.value?.timeSeries && response.data.value.timeSeries.length > 0) {
+            let newCount = 0;
+            for (const ts of response.data.value.timeSeries) {
+              const siteId = ts.sourceInfo.siteCode[0]?.value;
+              if (siteId && !allIds.has(siteId)) {
+                allTimeSeries.push(ts);
+                allIds.add(siteId);
+                newCount++;
+              }
+            }
+            totalFetched += response.data.value.timeSeries.length;
+            console.log(`Grid cell [${row},${col}] timeSeries: ${response.data.value.timeSeries.length}, new unique: ${newCount}`);
+          } else {
+            console.warn(`Grid cell [${row},${col}] data missing or empty`);
+          }
+          success = true;
+        } catch (err: any) {
+          attempt++;
+          if (attempt < maxAttempts) {
+            console.warn(`Grid cell [${row},${col}] failed (attempt ${attempt}/${maxAttempts}): ${err.message}, retrying in 1s...`);
+            await new Promise(r => setTimeout(r, 1000));
+          } else {
+            console.warn(`Grid cell [${row},${col}] failed after ${maxAttempts} attempts: ${err.message}`);
+          }
+        }
+      }
+      
+      // Delay between grid cells to be respectful to the API
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  
+  console.log(`Grid fetch complete. Total unique timeSeries: ${allTimeSeries.length}, total fetched: ${totalFetched}`);
+  return { value: { timeSeries: allTimeSeries } };
+}
+
 // Process USGS API response data into site format
 function processUSGSResponse(responseData: any, hours: number): any[] {
   let sites: any[] = [];
@@ -196,9 +291,199 @@ export async function GET(request: NextRequest) {
     };
     const activeBbox = hasValidBbox ? bbox : defaultBbox;
 
+    // Check if bbox matches Texas first (before validation)
+    const isTexasBbox = Math.abs(activeBbox.north - TEXAS_BBOX.north) < 0.2 &&
+      Math.abs(activeBbox.south - TEXAS_BBOX.south) < 0.2 &&
+      Math.abs(activeBbox.east - TEXAS_BBOX.east) < 0.2 &&
+      Math.abs(activeBbox.west - TEXAS_BBOX.west) < 0.2;
+    
+    if (isTexasBbox) {
+      console.log('Texas bounding box detected, checking cache first');
+      const texasKey = 'usgs:stations:texas:all';
+      const cachedTexas = await cacheGet(texasKey);
+      if (cachedTexas) {
+        recordCacheStat('usgs', true);
+        // Check if the cached data is already in the processed format
+        if (cachedTexas.sites) {
+          // Already processed format
+          return NextResponse.json({ ...cachedTexas, cached: true }, {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          });
+        } else if (cachedTexas.value?.timeSeries) {
+          // Raw USGS format - need to process it
+          console.log('Processing cached raw USGS data for Texas');
+          const processedSites = processUSGSResponse(cachedTexas, hours);
+          const result = { sites: processedSites, cached: true };
+          return NextResponse.json(result, {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          });
+        }
+      }
+      
+      // No Texas cache available, check if live fetching is allowed
+      if (!ALLOW_LIVE_USGS_FETCH) {
+        console.log('No Texas cache available and live fetching disabled');
+        return NextResponse.json(
+          { 
+            error: 'No cached Texas data available and live USGS API fetching is disabled',
+            sites: [],
+            cached: false 
+          },
+          { 
+            status: 200,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          }
+        );
+      }
+      
+      // Use grid-based approach for Texas
+      console.log('Fetching Texas data using grid approach');
+      try {
+        const gridResponse = await fetchUSGSDataWithGrid(activeBbox, hours);
+        const sites = processUSGSResponse(gridResponse, hours);
+        
+        // Cache site metadata for future use  
+        const siteMetadata = sites.map(site => ({
+          id: site.id,
+          name: site.name,
+          latitude: site.latitude,
+          longitude: site.longitude
+        }));
+        
+        if (siteMetadata.length > 0) {
+          console.log(`Caching metadata for ${siteMetadata.length} sites from Texas grid fetch`);
+          await CachedUSGSService.cacheSiteMetadata(siteMetadata);
+        }
+        
+        // Return processed sites data
+        const result = { sites, cached: false };
+        
+        // Cache the processed results for Texas
+        console.log('Caching Texas grid-fetched USGS data for key:', texasKey);
+        await cacheSet(texasKey, result, CACHE_TTL.USGS_CURRENT);
+        
+        return NextResponse.json(result, {
+          headers: {
+            'Access-Control-Allow-Origin': '*',
+            'Access-Control-Allow-Methods': 'GET',
+            'Access-Control-Allow-Headers': 'Content-Type',
+          },
+        });
+      } catch (error) {
+        console.error('Texas grid-based USGS fetch failed:', error);
+        return NextResponse.json(
+          { error: 'Failed to fetch Texas data', sites: [], cached: false },
+          {
+            status: 500,
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          }
+        );
+      }
+    }
+
     // Validate bounding box before making USGS API call
     if (!isValidBbox(activeBbox)) {
       console.warn('Bounding box too large for USGS API:', activeBbox);
+      
+      // Check if this is a Texas-sized bbox that needs grid approach
+      const bboxWidth = activeBbox.east - activeBbox.west;
+      const bboxHeight = activeBbox.north - activeBbox.south;
+      
+      if (bboxWidth > 10 || bboxHeight > 8) {
+        console.log('Large bounding box detected, using grid-based fetch approach');
+        
+        // Check cache first for the full bbox
+        const cacheKey = `usgs:${generateBboxCacheKey(activeBbox)}:${hours}h`;
+        const cachedData = await cacheGet(cacheKey);
+        if (cachedData) {
+          recordCacheStat('usgs', true);
+          return NextResponse.json({ ...cachedData, cached: true }, {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          });
+        }
+        
+        if (!ALLOW_LIVE_USGS_FETCH) {
+          console.log('Live USGS API fetching disabled, cannot fetch large bbox without cache');
+          return NextResponse.json(
+            { error: 'Large bounding box requires live fetching which is disabled', sites: [], cached: false },
+            {
+              status: 400,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              },
+            }
+          );
+        }
+        
+        // Use grid-based approach for large bounding boxes
+        try {
+          const gridResponse = await fetchUSGSDataWithGrid(activeBbox, hours);
+          const sites = processUSGSResponse(gridResponse, hours);
+          
+          // Cache site metadata for future use  
+          const siteMetadata = sites.map(site => ({
+            id: site.id,
+            name: site.name,
+            latitude: site.latitude,
+            longitude: site.longitude
+          }));
+          
+          if (siteMetadata.length > 0) {
+            console.log(`Caching metadata for ${siteMetadata.length} sites from grid fetch`);
+            await CachedUSGSService.cacheSiteMetadata(siteMetadata);
+          }
+          
+          // Return processed sites data
+          const result = { sites, cached: false };
+          
+          // Cache the processed results
+          console.log('Caching grid-fetched USGS data for key:', cacheKey);
+          await cacheSet(cacheKey, result, CACHE_TTL.USGS_CURRENT);
+          
+          return NextResponse.json(result, {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          });
+        } catch (error) {
+          console.error('Grid-based USGS fetch failed:', error);
+          return NextResponse.json(
+            { error: 'Failed to fetch large bounding box data', sites: [], cached: false },
+            {
+              status: 500,
+              headers: {
+                'Access-Control-Allow-Origin': '*',
+                'Access-Control-Allow-Methods': 'GET',
+                'Access-Control-Allow-Headers': 'Content-Type',
+              },
+            }
+          );
+        }
+      }
       
       // Instead of failing, try to use a smaller default bounding box
       const fallbackBbox = {
@@ -240,42 +525,6 @@ export async function GET(request: NextRequest) {
             },
           }
         );
-      }
-    }
-
-    // If bbox matches Texas, serve from preloaded cache
-    const isTexasBbox = Math.abs(activeBbox.north - TEXAS_BBOX.north) < 0.2 &&
-      Math.abs(activeBbox.south - TEXAS_BBOX.south) < 0.2 &&
-      Math.abs(activeBbox.east - TEXAS_BBOX.east) < 0.2 &&
-      Math.abs(activeBbox.west - TEXAS_BBOX.west) < 0.2;
-    if (isTexasBbox) {
-      const texasKey = 'usgs:stations:texas:all';
-      const cachedTexas = await cacheGet(texasKey);
-      if (cachedTexas) {
-        recordCacheStat('usgs', true);
-        // Check if the cached data is already in the processed format
-        if (cachedTexas.sites) {
-          // Already processed format
-          return NextResponse.json({ ...cachedTexas, cached: true }, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
-          });
-        } else if (cachedTexas.value?.timeSeries) {
-          // Raw USGS format - need to process it
-          console.log('Processing cached raw USGS data for Texas');
-          const processedSites = processUSGSResponse(cachedTexas, hours);
-          const result = { sites: processedSites, cached: true };
-          return NextResponse.json(result, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
-          });
-        }
       }
     }
 
