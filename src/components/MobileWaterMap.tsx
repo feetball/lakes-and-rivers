@@ -53,10 +53,10 @@ export default function MobileWaterMap() {
   const loadWaterways = async () => {
     try {
       const bbox = {
-        north: parseFloat((30.2672 + 1.45).toFixed(6)),
-        south: parseFloat((30.2672 - 1.45).toFixed(6)),
-        east: parseFloat((-97.7431 + 1.45).toFixed(6)),
-        west: parseFloat((-97.7431 - 1.45).toFixed(6))
+        north: 36.5,    // Full Texas north boundary
+        south: 25.8,    // Full Texas south boundary  
+        east: -93.5,    // Full Texas east boundary
+        west: -106.7    // Full Texas west boundary
       };
       
       const waterwayData = await WaterwayService.getWaterways(bbox);
@@ -71,12 +71,12 @@ export default function MobileWaterMap() {
     setError(null);
     
     try {
-      // Use the same bbox as the regular WaterMap for consistency
+      // Use full Texas bounding box instead of just Austin area
       const bbox = {
-        north: parseFloat((30.2672 + 1.45).toFixed(6)),
-        south: parseFloat((30.2672 - 1.45).toFixed(6)),
-        east: parseFloat((-97.7431 + 1.45).toFixed(6)),
-        west: parseFloat((-97.7431 - 1.45).toFixed(6))
+        north: 36.5,    // Full Texas north boundary
+        south: 25.8,    // Full Texas south boundary  
+        east: -93.5,    // Full Texas east boundary
+        west: -106.7    // Full Texas west boundary
       };
       
       const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);

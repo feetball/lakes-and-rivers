@@ -72,4 +72,4 @@ ENV HOSTNAME "0.0.0.0"
 # Add wait-for-redis script and use it to block until Redis is ready
 COPY --chown=nextjs:nodejs wait-for-redis.sh ./
 RUN chmod +x ./wait-for-redis.sh
-CMD ["sh", "-c", "node server.js"]
+CMD ["sh", "-c", "node --max-old-space-size=4096 server.js"]

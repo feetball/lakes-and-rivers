@@ -25,12 +25,12 @@ services:
       REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-      ALLOW_LIVE_USGS_FETCH: ${ALLOW_LIVE_USGS_FETCH}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-CHANGE_ME_SECURE_PASSWORD_123}
+      ALLOW_LIVE_USGS_FETCH: ${ALLOW_LIVE_USGS_FETCH:-true}
     ports:
       - "3000:3000"
-    command: ["sh", "-c", "node server.js"]
+    command: ["sh", "-c", "sleep 5 && node server.js"]
     healthcheck:
       test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3000/api/health || exit 1"]
       interval: 30s
@@ -48,9 +48,10 @@ services:
       REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      ADMIN_USERNAME: ${ADMIN_USERNAME}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD}
-    command: ["sh", "-c", "./wait-for-redis.sh node preload-data.js"]
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-CHANGE_ME_SECURE_PASSWORD_123}
+      ALLOW_LIVE_USGS_FETCH: ${ALLOW_LIVE_USGS_FETCH:-true}
+    command: ["sh", "-c", "sleep 10 && ./wait-for-redis.sh node --max-old-space-size=4096 preload-data.js"]
 
   nginx:
     image: nginx:alpine

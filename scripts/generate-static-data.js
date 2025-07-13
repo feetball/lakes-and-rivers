@@ -166,16 +166,16 @@ async function fetchTexasUSGSStations() {
         } catch (err) {
           attempt++;
           if (attempt < maxAttempts) {
-            console.warn(`[GENERATE] USGS batch row ${row} col ${col} failed (attempt ${attempt}/${maxAttempts}): ${err.message}, retrying in 1s...`);
-            await new Promise(r => setTimeout(r, 1000));
+            console.warn(`[GENERATE] USGS batch row ${row} col ${col} failed (attempt ${attempt}/${maxAttempts}): ${err.message}, retrying in 3s...`);
+            await new Promise(r => setTimeout(r, 3000));
           } else {
             console.warn(`[GENERATE] USGS batch row ${row} col ${col} failed after ${maxAttempts} attempts: ${err.message}`);
           }
         }
       }
       
-      // Delay between batches
-      await new Promise(r => setTimeout(r, 500));
+      // Delay between batches - increased to be respectful to USGS API
+      await new Promise(r => setTimeout(r, 2000));
     }
   }
   
@@ -255,10 +255,15 @@ async function fetchTexasWaterways() {
         }
       } catch (err) {
         console.warn(`[GENERATE] Overpass batch row ${row} col ${col} error: ${err.message}`);
+        // If rate limited (429), wait longer
+        if (err.message.includes('429')) {
+          console.warn(`[GENERATE] Rate limited, waiting 20 seconds before next request`);
+          await new Promise(r => setTimeout(r, 20000));
+        }
       }
       
-      // Delay between batches
-      await new Promise(r => setTimeout(r, 2000));
+      // Delay between batches - increased to avoid rate limiting
+      await new Promise(r => setTimeout(r, 10000));
     }
   }
   
@@ -371,7 +376,7 @@ async function fetchFloodStageData() {
     } catch (err) {
       console.warn(`[GENERATE] Error fetching USGS site ${siteId}:`, err.message);
     }
-    await new Promise(r => setTimeout(r, 500));
+    await new Promise(r => setTimeout(r, 1000));
   }
 
   // 2. Fetch NWS AHPS data for sites with known NWS gauge codes
@@ -477,7 +482,7 @@ async function fetchFloodStageData() {
       }
       
       // Rate limiting for NWS - be respectful
-      await new Promise(r => setTimeout(r, 1500));
+      await new Promise(r => setTimeout(r, 3000));
     }
   }
 

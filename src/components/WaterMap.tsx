@@ -178,25 +178,25 @@ export default function WaterMap() {
     }
   }, [lastLoadedBounds, loadWaterSitesForBounds, loadWaterwaysForBounds]);
   
-  // Initialize with Austin area on mount
+  // Initialize with full Texas on mount
   useEffect(() => {
-    const austinBounds = {
-      north: parseFloat((30.2672 + 1.45).toFixed(6)),  // ~31.717
-      south: parseFloat((30.2672 - 1.45).toFixed(6)),  // ~28.817
-      east: parseFloat((-97.7431 + 1.45).toFixed(6)),  // ~-96.293
-      west: parseFloat((-97.7431 - 1.45).toFixed(6))   // ~-99.193
+    const texasBounds = {
+      north: 36.5,    // Full Texas north boundary
+      south: 25.8,    // Full Texas south boundary  
+      east: -93.5,    // Full Texas east boundary
+      west: -106.7    // Full Texas west boundary
     };
     
-    console.log('Initial load for Austin area:', austinBounds);
+    console.log('Initial load for full Texas:', texasBounds);
     
     // Load both water sites and waterways for initial area
     Promise.all([
-      loadWaterSitesForBounds(austinBounds),
-      loadWaterwaysForBounds(austinBounds)
+      loadWaterSitesForBounds(texasBounds),
+      loadWaterwaysForBounds(texasBounds)
     ]);
     
-    setLastLoadedBounds(austinBounds);
-    setCurrentViewBounds(austinBounds);
+    setLastLoadedBounds(texasBounds);
+    setCurrentViewBounds(texasBounds);
   }, [loadWaterSitesForBounds, loadWaterwaysForBounds]);
 
   // Update sites when trend hours change
