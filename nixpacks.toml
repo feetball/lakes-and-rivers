@@ -5,7 +5,7 @@ cmds = [
 ]
 
 [phases.start]
-cmd = "node startup.js"
+cmd = "npm start"
 
 [variables]
 NODE_ENV = "production"

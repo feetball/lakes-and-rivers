@@ -6,7 +6,6 @@
   "deploy": {
     "numReplicas": 1,
     "sleepApplication": false,
-    "restartPolicyType": "ON_FAILURE",
-    "startCommand": "node startup.js"
+    "restartPolicyType": "ON_FAILURE"
   }
 }

@@ -6,25 +6,42 @@
 
 ## Automatic Cache Management
 
-🆕 **New Feature**: This application now automatically clears Redis cache during Railway deployments to ensure fresh data.
+🆕 **New Feature**: This application includes scripts to clear Redis cache during Railway deployments.
 
-### How It Works
-- When deployed to Railway production, the app automatically:
-  1. Starts the Next.js server
-  2. Clears all Redis cache data
-  3. Preloads fresh Texas data from static files
-  4. Begins serving requests with clean cache
+### Manual Cache Clear After Deployment
+After each Railway deployment, you can manually clear the cache to ensure fresh data:
 
-### Environment Detection
-The cache clearing only happens when:
-- `RAILWAY_ENVIRONMENT=production` OR `RAILWAY_PROJECT_ID` is set
-- `NODE_ENV=production`
+1. **Via Railway Dashboard:**
+   - Go to your app's Railway dashboard
+   - Open the "Deployments" tab
+   - Click on your latest deployment
+   - Go to "Logs" and note your app URL
+   - Use the cache admin interface
 
-### Manual Cache Control
-You can also manually clear cache using:
-```bash
-npm run railway-clear-cache
-```
+2. **Via API Call:**
+   ```bash
+   # Replace YOUR_APP_URL with your Railway app URL
+   curl -X POST "https://YOUR_APP_URL/api/admin/cache" \
+     -H "Content-Type: application/json" \
+     -u "admin:YOUR_ADMIN_PASSWORD" \
+     -d '{"action":"clear_all"}'
+   ```
+
+3. **Via npm script (for local testing):**
+   ```bash
+   npm run railway-clear-cache
+   ```
+
+### Environment Variables for Cache Clear
+
+Set these in your Railway environment:
+- `ADMIN_USERNAME` (default: "admin")  
+- `ADMIN_PASSWORD` (set to a secure password)
+- `REDIS_URL` (automatically set by Railway Redis addon)
+
+### Automated Cache Clear (Optional)
+
+For automatic cache clearing on each deployment, you can set up a Railway webhook or use the provided scripts in your deployment process.
 
 ## Manual Deployment Steps
 
