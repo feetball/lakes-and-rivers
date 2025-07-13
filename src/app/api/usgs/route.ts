@@ -1,3 +1,12 @@
+// Texas bounding box for filtering
+const TEXAS_BBOX = { north: 36.5, south: 25.8, east: -93.5, west: -106.7 };
+
+// Function to check if a site is within Texas boundaries
+function isWithinTexas(latitude: number, longitude: number): boolean {
+  return latitude >= TEXAS_BBOX.south && latitude <= TEXAS_BBOX.north &&
+         longitude >= TEXAS_BBOX.west && longitude <= TEXAS_BBOX.east;
+}
+
 // Validate bounding box for USGS API
 function isValidBbox(bbox: { north: number; south: number; east: number; west: number }): boolean {
   // Basic coordinate validation
@@ -260,6 +269,11 @@ function processUSGSResponse(responseData: any, hours: number): any[] {
     });
     
     sites = Array.from(uniqueSitesMap.values());
+    
+    // Filter to only include sites within Texas boundaries
+    sites = sites.filter(site => isWithinTexas(site.latitude, site.longitude));
+    
+    console.log(`Filtered to ${sites.length} sites within Texas boundaries`);
   }
   
   return sites;
@@ -281,14 +295,9 @@ export async function GET(request: NextRequest) {
 
     // Texas bounding box (approximate)
     const TEXAS_BBOX = { north: 36.5, south: 25.8, east: -93.5, west: -106.7 };
-    // If no valid bounding box is provided, use Central Texas as default
+    // If no valid bounding box is provided, use full Texas as default
     const hasValidBbox = bbox.north !== 0 || bbox.south !== 0 || bbox.east !== 0 || bbox.west !== 0;
-    const defaultBbox = {
-      north: 30.8,    // North of Austin
-      south: 29.5,    // South of San Antonio
-      east: -97.0,    // East boundary
-      west: -99.0     // West boundary (covers Hill Country)
-    };
+    const defaultBbox = TEXAS_BBOX; // Use full Texas as default
     const activeBbox = hasValidBbox ? bbox : defaultBbox;
 
     // Check if bbox matches Texas first (before validation)

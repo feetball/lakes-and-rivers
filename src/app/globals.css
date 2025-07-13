@@ -36,6 +36,7 @@
 
 .custom-tooltip {
   max-width: 280px !important;
+  min-width: 260px !important;
 }
 
 .custom-tooltip .leaflet-tooltip-content {
@@ -45,6 +46,7 @@
   border: 1px solid #ccc !important;
   border-radius: 8px !important;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15) !important;
+  overflow: hidden !important;
 }
 
 /* Ensure charts render properly in tooltips */
@@ -52,12 +54,14 @@
   display: block !important;
   width: 100% !important;
   height: auto !important;
+  max-width: 100% !important;
 }
 
 .custom-tooltip .recharts-wrapper {
   display: block !important;
   width: 100% !important;
   height: auto !important;
+  max-width: 100% !important;
 }
 
 /* Fix for recharts responsive container in tooltips */
@@ -66,6 +70,7 @@
   width: 100% !important;
   height: auto !important;
   min-height: 96px !important;
+  max-width: 100% !important;
 }
 
 /* Mobile optimizations for popups */

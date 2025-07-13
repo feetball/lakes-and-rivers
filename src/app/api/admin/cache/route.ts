@@ -94,15 +94,44 @@ function isPreloadRequest(request: NextRequest): boolean {
   return isLocalOrInternal && userAgent.includes('node');
 }
 
+// Check if this is a form-based request (from the admin HTML page)
+function isFormBasedRequest(request: NextRequest): boolean {
+  const userAgent = request.headers.get('user-agent') || '';
+  const referer = request.headers.get('referer') || '';
+  const origin = request.headers.get('origin') || '';
+  
+  // Check if request comes from browser accessing the admin page
+  return userAgent.includes('Mozilla') && (
+    referer.includes('/admin/cache.html') || 
+    origin.includes('localhost') || 
+    origin.includes('127.0.0.1') ||
+    referer.includes('admin')
+  );
+}
+
 // GET - Show cache admin interface (for browser access)
 export async function GET(request: NextRequest) {
   if (!authenticate(request) && !isPreloadRequest(request)) {
-    return new NextResponse('Unauthorized', {
-      status: 401,
-      headers: {
-        'WWW-Authenticate': 'Basic realm="Cache Admin"',
-      },
-    });
+    // For form-based requests, don't send WWW-Authenticate header to avoid browser dialog
+    if (isFormBasedRequest(request)) {
+      return new NextResponse(JSON.stringify({
+        error: 'Authentication required',
+        message: 'Please provide valid credentials'
+      }), {
+        status: 401,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    } else {
+      // For traditional Basic Auth requests (like curl), send WWW-Authenticate header
+      return new NextResponse('Unauthorized', {
+        status: 401,
+        headers: {
+          'WWW-Authenticate': 'Basic realm="Cache Admin"',
+        },
+      });
+    }
   }
 
   try {
@@ -166,10 +195,22 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   // Allow preload requests from localhost, otherwise require authentication
   if (!authenticate(request) && !isPreloadRequest(request)) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
+    // For form-based requests, don't send WWW-Authenticate header to avoid browser dialog
+    if (isFormBasedRequest(request)) {
+      return NextResponse.json(
+        { 
+          error: 'Authentication required',
+          message: 'Please provide valid credentials'
+        },
+        { status: 401 }
+      );
+    } else {
+      // For traditional requests, we can still use the standard response
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
   }
 
   try {

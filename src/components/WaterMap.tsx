@@ -153,50 +153,73 @@ export default function WaterMap() {
     }
   }, []);
 
+  // Texas bounding box
+  const TEXAS_BOUNDS = {
+    north: 36.5,    // Full Texas north boundary
+    south: 25.8,    // Full Texas south boundary  
+    east: -93.5,    // Full Texas east boundary
+    west: -106.7    // Full Texas west boundary
+  };
+
+  // Function to check if bounds are within Texas
+  const isWithinTexas = useCallback((bounds: any) => {
+    return bounds.north <= TEXAS_BOUNDS.north && 
+           bounds.south >= TEXAS_BOUNDS.south &&
+           bounds.east <= TEXAS_BOUNDS.east && 
+           bounds.west >= TEXAS_BOUNDS.west;
+  }, []);
+
+  // Function to clamp bounds to Texas boundaries
+  const clampToTexas = useCallback((bounds: any) => {
+    return {
+      north: Math.min(bounds.north, TEXAS_BOUNDS.north),
+      south: Math.max(bounds.south, TEXAS_BOUNDS.south),
+      east: Math.min(bounds.east, TEXAS_BOUNDS.east),
+      west: Math.max(bounds.west, TEXAS_BOUNDS.west)
+    };
+  }, []);
+
   // Callback to handle map bounds changes - MUCH more responsive threshold
   const handleMapBoundsChange = useCallback(async (bounds: any) => {
     console.log('Map bounds changed:', bounds);
     
+    // Clamp bounds to Texas only
+    const texasBounds = clampToTexas(bounds);
+    console.log('Clamped to Texas bounds:', texasBounds);
+    
     // Very small threshold for immediate response - 0.01 degrees ≈ 1km
     if (!lastLoadedBounds || 
-        Math.abs(bounds.north - lastLoadedBounds.north) > 0.01 ||
-        Math.abs(bounds.south - lastLoadedBounds.south) > 0.01 ||
-        Math.abs(bounds.east - lastLoadedBounds.east) > 0.01 ||
-        Math.abs(bounds.west - lastLoadedBounds.west) > 0.01) {
+        Math.abs(texasBounds.north - lastLoadedBounds.north) > 0.01 ||
+        Math.abs(texasBounds.south - lastLoadedBounds.south) > 0.01 ||
+        Math.abs(texasBounds.east - lastLoadedBounds.east) > 0.01 ||
+        Math.abs(texasBounds.west - lastLoadedBounds.west) > 0.01) {
       
-      console.log('Loading new data for bounds:', bounds);
-      setLastLoadedBounds(bounds);
-      setCurrentViewBounds(bounds);
+      console.log('Loading new data for Texas bounds:', texasBounds);
+      setLastLoadedBounds(texasBounds);
+      setCurrentViewBounds(texasBounds);
       
-      // Load both gauge sites and waterways for the new area
+      // Load both gauge sites and waterways for the Texas area only
       await Promise.all([
-        loadWaterSitesForBounds(bounds),
-        loadWaterwaysForBounds(bounds)
+        loadWaterSitesForBounds(texasBounds),
+        loadWaterwaysForBounds(texasBounds)
       ]);
     } else {
       console.log('Map movement too small, not loading new data');
     }
-  }, [lastLoadedBounds, loadWaterSitesForBounds, loadWaterwaysForBounds]);
+  }, [lastLoadedBounds, loadWaterSitesForBounds, loadWaterwaysForBounds, clampToTexas]);
   
   // Initialize with full Texas on mount
   useEffect(() => {
-    const texasBounds = {
-      north: 36.5,    // Full Texas north boundary
-      south: 25.8,    // Full Texas south boundary  
-      east: -93.5,    // Full Texas east boundary
-      west: -106.7    // Full Texas west boundary
-    };
-    
-    console.log('Initial load for full Texas:', texasBounds);
+    console.log('Initial load for full Texas:', TEXAS_BOUNDS);
     
     // Load both water sites and waterways for initial area
     Promise.all([
-      loadWaterSitesForBounds(texasBounds),
-      loadWaterwaysForBounds(texasBounds)
+      loadWaterSitesForBounds(TEXAS_BOUNDS),
+      loadWaterwaysForBounds(TEXAS_BOUNDS)
     ]);
     
-    setLastLoadedBounds(texasBounds);
-    setCurrentViewBounds(texasBounds);
+    setLastLoadedBounds(TEXAS_BOUNDS);
+    setCurrentViewBounds(TEXAS_BOUNDS);
   }, [loadWaterSitesForBounds, loadWaterwaysForBounds]);
 
   // Update sites when trend hours change

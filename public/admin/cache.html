@@ -276,7 +276,13 @@
                     updateStatus(data);
                     startAuthTimer();
                 } else {
-                    alert('Authentication failed. Please check your credentials.');
+                    // Try to get JSON error message
+                    try {
+                        const errorData = await response.json();
+                        alert(errorData.message || errorData.error || 'Authentication failed. Please check your credentials.');
+                    } catch {
+                        alert('Authentication failed. Please check your credentials.');
+                    }
                     authCredentials = null;
                 }
             } catch (error) {

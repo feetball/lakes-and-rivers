@@ -655,7 +655,7 @@ const MapView: React.FC<MapViewProps> = ({
               permanent={false}
               sticky={false}
             >
-              <div className="p-2 max-w-xs" style={{width: '320px', fontSize: '13px', maxWidth: '95vw'}}>
+              <div className="p-2 max-w-xs" style={{width: '280px', maxWidth: '95vw', fontSize: '13px'}}>
                 <h3 className="font-bold text-base md:text-lg mb-2 break-words whitespace-normal">{site.name}</h3>
                 <div className="space-y-1 text-xs">
                   <div>
@@ -719,12 +719,14 @@ const MapView: React.FC<MapViewProps> = ({
                     <div className="text-xs font-semibold text-gray-600 mb-1">
                       <span className="break-words whitespace-normal">Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Chart data: {site.chartData.length} points)</span>
                     </div>
-                    <WaterLevelChart 
-                      data={site.chartData} 
-                      color={getChartColor(site)}
-                      height={96}
-                      forTooltip={true}
-                    />
+                    <div className="w-full overflow-hidden" style={{maxWidth: '100%'}}>
+                      <WaterLevelChart 
+                        data={site.chartData} 
+                        color={getChartColor(site)}
+                        height={96}
+                        forTooltip={true}
+                      />
+                    </div>
                   </div>
                 )}
                 <div className="mt-2 pt-1 border-t border-gray-200 text-xs">
