@@ -4,6 +4,28 @@
 
 [![Deploy on Railway](https://railway.app/button.svg)](https://railway.app/template/YOUR_TEMPLATE_ID)
 
+## Automatic Cache Management
+
+🆕 **New Feature**: This application now automatically clears Redis cache during Railway deployments to ensure fresh data.
+
+### How It Works
+- When deployed to Railway production, the app automatically:
+  1. Starts the Next.js server
+  2. Clears all Redis cache data
+  3. Preloads fresh Texas data from static files
+  4. Begins serving requests with clean cache
+
+### Environment Detection
+The cache clearing only happens when:
+- `RAILWAY_ENVIRONMENT=production` OR `RAILWAY_PROJECT_ID` is set
+- `NODE_ENV=production`
+
+### Manual Cache Control
+You can also manually clear cache using:
+```bash
+npm run railway-clear-cache
+```
+
 ## Manual Deployment Steps
 
 ### 1. Prerequisites

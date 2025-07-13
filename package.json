@@ -16,7 +16,9 @@
     "flood-update": "node scripts/validate-flood-stages.js --update-all",
     "flood-update-verbose": "node scripts/validate-flood-stages.js --update-all --verbose",
     "flood-site": "node scripts/validate-flood-stages.js --site=",
-    "setup-flood-cron": "cp scripts/flood-stage-cron.txt /tmp/ && echo 'Run: crontab /tmp/flood-stage-cron.txt'"
+    "setup-flood-cron": "cp scripts/flood-stage-cron.txt /tmp/ && echo 'Run: crontab /tmp/flood-stage-cron.txt'",
+    "railway-clear-cache": "node railway-clear-cache.js",
+    "railway-deploy": "./railway-deploy.sh"
   },
   "dependencies": {
     "@types/leaflet": "^1.9.8",
