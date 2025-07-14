@@ -38,30 +38,32 @@ function loadStaticJson(filePath) {
 /**
  * Make a cache API call with retry logic
  */
-async function makeCacheRequest(data, retries = 3, host = 'app', port = 3000) {
+async function makeCacheRequest(data, retries = 5, host = 'localhost', port = 3000) {
   for (let i = 0; i < retries; i++) {
     try {
+      console.log(`[PRELOAD] Attempt ${i + 1}/${retries}: Calling cache API at http://${host}:${port}/api/admin/cache`);
       const response = await fetch(`http://${host}:${port}/api/admin/cache`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
+        timeout: 30000
       });
       
       if (response.ok) {
+        const result = await response.json();
+        console.log(`[PRELOAD] ✓ Cache request successful:`, result.message || 'OK');
         return true;
       } else {
-        const errorText = await response.text();
-        console.warn(`[PRELOAD] Cache API returned ${response.status}: ${errorText}`);
+        console.warn(`[PRELOAD] Cache request failed (${response.status}): ${response.statusText}`);
+        if (i === retries - 1) return false;
+        await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1))); // Exponential backoff
       }
     } catch (error) {
-      console.warn(`[PRELOAD] Cache API request failed (attempt ${i + 1}/${retries}):`, error.message);
-      
-      if (i < retries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second before retry
-      }
+      console.warn(`[PRELOAD] Cache request error (attempt ${i + 1}):`, error.message);
+      if (i === retries - 1) return false;
+      await new Promise(resolve => setTimeout(resolve, 2000 * (i + 1))); // Exponential backoff
     }
   }
-  
   return false;
 }
 

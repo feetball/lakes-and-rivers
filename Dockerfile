@@ -67,6 +67,8 @@ EXPOSE 3000
 
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+ENV REDIS_HOST="redis"
+ENV REDIS_PORT="6379"
 
 # Add wait-for-redis script and use it to block until Redis is ready
 COPY --chown=nextjs:nodejs wait-for-redis.sh ./
