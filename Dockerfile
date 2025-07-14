@@ -60,7 +60,7 @@ COPY --chown=nextjs:nodejs preload-data.js ./
 COPY --chown=nextjs:nodejs startup.js ./
 
 # Healthcheck for Next.js API health endpoint
-HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
   CMD wget -qO- http://localhost:${PORT:-3000}/api/health || exit 1
 
 USER nextjs
