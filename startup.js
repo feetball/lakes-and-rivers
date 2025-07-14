@@ -62,7 +62,7 @@ async function startServer() {
     // In production Docker, the working directory is set up by the Dockerfile
     // and server.js from standalone build is available at the root
     command = 'node';
-    args = ['--max-old-space-size=4096', 'server.js'];
+    args = ['--max-old-space-size=1024', 'server.js']; // Reduced from 4096 to 1024 MB
   }
   
   const server = spawn(command, args, {
@@ -93,15 +93,15 @@ async function startServer() {
           console.warn('⚠ Redis clear failed, continuing with preload anyway');
         }
         
-        // Then preload static data
+        // Then preload static data (now with smaller Austin-focused waterways)
         console.log('Loading static data into clean Redis database...');
         const { preloadData } = require('./preload-data.js');
         await preloadData('localhost', parseInt(process.env.PORT || '3000'));
-        console.log('✓ Static data preload completed successfully!');
+        console.log('✓ Static data preload completed successfully! (Austin-area waterways loaded)');
       } catch (error) {
         console.warn('Static data preload failed, app will use live APIs:', error.message);
       }
-    }, 10000); // Wait 10 seconds for server to be ready
+    }, 15000); // Keep 15 second wait time
   }
   
   server.on('exit', (code) => {
