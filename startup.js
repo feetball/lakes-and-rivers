@@ -70,6 +70,23 @@ async function startServer() {
     env: { ...process.env }
   });
   
+  // In production with Redis available, preload static data after server starts
+  if (!isDevelopment && process.env.REDIS_URL) {
+    console.log('Production mode with Redis - will preload static data after server startup...');
+    
+    // Wait a few seconds for server to be fully ready, then preload
+    setTimeout(async () => {
+      try {
+        console.log('Starting static data preload...');
+        const { preloadData } = require('./preload-data.js');
+        await preloadData('localhost', parseInt(process.env.PORT || '3000'));
+        console.log('Static data preload completed successfully!');
+      } catch (error) {
+        console.warn('Static data preload failed, app will use live APIs:', error.message);
+      }
+    }, 10000); // Wait 10 seconds for server to be ready
+  }
+  
   server.on('exit', (code) => {
     console.log(`Server exited with code ${code}`);
     process.exit(code);
