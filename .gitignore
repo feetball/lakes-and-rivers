@@ -264,3 +264,7 @@ dump.rdb
 # Local development
 .vscode/settings.json
 .vscode/launch.json
+
+# Static data files (exclude large uncompressed JSON, keep compressed .gz)
+data/static/*.json
+!data/static/README.md

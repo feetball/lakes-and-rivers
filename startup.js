@@ -72,15 +72,32 @@ async function startServer() {
   
   // In production with Redis available, preload static data after server starts
   if (!isDevelopment && process.env.REDIS_URL) {
-    console.log('Production mode with Redis - will preload static data after server startup...');
+    console.log('Production mode with Redis - will clear and preload static data after server startup...');
     
-    // Wait a few seconds for server to be fully ready, then preload
+    // Wait a few seconds for server to be fully ready, then clear and preload
     setTimeout(async () => {
       try {
-        console.log('Starting static data preload...');
+        console.log('Starting Redis database cleanup and static data preload...');
+        
+        // First, clear the Redis database
+        console.log('Clearing Redis database...');
+        const clearResponse = await fetch(`http://localhost:${process.env.PORT || '3000'}/api/admin/cache`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'clear' })
+        });
+        
+        if (clearResponse.ok) {
+          console.log('✓ Redis database cleared successfully');
+        } else {
+          console.warn('⚠ Redis clear failed, continuing with preload anyway');
+        }
+        
+        // Then preload static data
+        console.log('Loading static data into clean Redis database...');
         const { preloadData } = require('./preload-data.js');
         await preloadData('localhost', parseInt(process.env.PORT || '3000'));
-        console.log('Static data preload completed successfully!');
+        console.log('✓ Static data preload completed successfully!');
       } catch (error) {
         console.warn('Static data preload failed, app will use live APIs:', error.message);
       }
