@@ -94,12 +94,12 @@ async function waitForServer(host = 'app', port = 3000, maxWaitTime = 60000) {
 }
 
 // Data loading script
-async function preloadData() {
+async function preloadData(host = 'app', port = 3000) {
   console.log('[PRELOAD] Static data preloader starting...');
   console.log('[PRELOAD] Loading provided static files (*.json.gz) into Redis cache...');
   
   // Wait for server to be ready
-  const serverInfo = await waitForServer();
+  const serverInfo = await waitForServer(host, port);
   
   console.log('[PRELOAD] Server ready, transferring static data files to Redis...');
   

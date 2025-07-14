@@ -61,7 +61,7 @@ if (isRailway && isProduction) {
           try {
             console.log('[RAILWAY-CACHE] Starting data preload...');
             const { preloadData } = require('./preload-data.js');
-            await preloadData();
+            await preloadData('localhost', port);
             console.log('[RAILWAY-CACHE] ✓ Data preload completed!');
           } catch (error) {
             console.log('[RAILWAY-CACHE] ⚠️ Preload failed:', error.message);
