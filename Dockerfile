@@ -56,16 +56,18 @@ COPY --from=builder --chown=nextjs:nodejs /app/data ./data
 # Copy preload script
 COPY --chown=nextjs:nodejs preload-data.js ./
 
+# Copy startup script  
+COPY --chown=nextjs:nodejs startup.js ./
 
 # Healthcheck for Next.js API health endpoint
 HEALTHCHECK --interval=10s --timeout=3s --start-period=30s --retries=3 \
-  CMD wget -qO- http://localhost:3000/api/health || exit 1
+  CMD wget -qO- http://localhost:${PORT:-3000}/api/health || exit 1
 
 USER nextjs
 
+# Railway will set the PORT environment variable
 EXPOSE 3000
 
-ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 ENV REDIS_HOST="redis"
 ENV REDIS_PORT="6379"
@@ -73,4 +75,4 @@ ENV REDIS_PORT="6379"
 # Add wait-for-redis script and use it to block until Redis is ready
 COPY --chown=nextjs:nodejs wait-for-redis.sh ./
 RUN chmod +x ./wait-for-redis.sh
-CMD ["sh", "-c", "node --max-old-space-size=4096 server.js"]
+CMD ["node", "startup.js"]
