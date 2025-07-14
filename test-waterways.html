@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Waterways</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 600px; width: 100%; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([30.2672, -97.7431], 11);
+        
+        // Add base layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+        
+        // Fetch and display waterways
+        fetch('/api/waterways?north=30.3&south=30.25&east=-97.7&west=-97.8')
+            .then(response => response.json())
+            .then(data => {
+                console.log('Waterways loaded:', data.waterways.length);
+                
+                data.waterways.forEach(waterway => {
+                    const style = {
+                        color: waterway.type === 'lake' || waterway.type === 'reservoir' ? '#1e40af' : '#2563eb',
+                        weight: waterway.type === 'lake' || waterway.type === 'reservoir' ? 3 : 5,
+                        opacity: 1.0,
+                        fillColor: '#3b82f6',
+                        fillOpacity: 0.7
+                    };
+                    
+                    if (waterway.type === 'lake' || waterway.type === 'reservoir') {
+                        L.polygon(waterway.coordinates, style)
+                            .bindPopup(`${waterway.name} (${waterway.type})`)
+                            .addTo(map);
+                    } else {
+                        L.polyline(waterway.coordinates, style)
+                            .bindPopup(`${waterway.name} (${waterway.type})`)
+                            .addTo(map);
+                    }
+                });
+            })
+            .catch(error => {
+                console.error('Error loading waterways:', error);
+            });
+    </script>
+</body>
+</html>

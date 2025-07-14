@@ -14,13 +14,23 @@ import FloodAwareWaterwayLayer from './FloodAwareWaterwayLayer';
 import FloodPredictionPanel from './FloodPredictionPanel';
 import DraggableBox from './DraggableBox';
 
-// Fix for default markers in react-leaflet
-delete (L.Icon.Default.prototype as any)._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
-});
+// Import Leaflet CSS only on client side when component loads
+import 'leaflet/dist/leaflet.css';
+
+// Fix for default markers in react-leaflet - moved to useEffect to avoid SSR issues
+let leafletIconsFixed = false;
+
+const fixLeafletIcons = () => {
+  if (!leafletIconsFixed && typeof window !== 'undefined') {
+    delete (L.Icon.Default.prototype as any)._getIconUrl;
+    L.Icon.Default.mergeOptions({
+      iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon-2x.png',
+      iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-icon.png',
+      shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/images/marker-shadow.png',
+    });
+    leafletIconsFixed = true;
+  }
+};
 
 interface MapViewProps {
   sites: WaterSite[];
@@ -40,7 +50,6 @@ const MapOverlayHandler: React.FC<{ sites: WaterSite[]; globalTrendHours: number
   const map = useMap();
   const [overlayPositions, setOverlayPositions] = useState<Array<{ site: WaterSite; x: number; y: number; gaugeX: number; gaugeY: number; index: number }>>([]);
   const [mounted, setMounted] = useState(false);
-  const boundsUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -263,9 +272,13 @@ const MapView: React.FC<MapViewProps> = ({
   const [isLocalNetwork, setIsLocalNetwork] = useState(false);
   const [cacheStats, setCacheStats] = useState<any>(null);
   const mapRef = useRef<any>(null);
+  const boundsUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // Periodically fetch latest gaugeSites from /api/usgs (Texas bounding box for cached data)
   useEffect(() => {
+    // Fix Leaflet icons on client side
+    fixLeafletIcons();
+    
     let isMounted = true;
     let interval: NodeJS.Timeout;
     const fetchSites = async () => {
