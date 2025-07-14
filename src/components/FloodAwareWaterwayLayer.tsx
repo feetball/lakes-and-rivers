@@ -183,28 +183,28 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({
   // Get styling based on flood risk and waterway type
   const getFloodStyle = (segment: WaterwaySegment) => {
     if (!enabled) {
-      // Default styling when flood awareness is disabled
+      // Default styling when flood awareness is disabled - make it very visible for debugging
       if (segment.type === 'lake') {
         return {
           color: '#1e40af', // Blue for lakes
-          weight: 2,
-          opacity: 0.8,
+          weight: 5, // Increased from 2
+          opacity: 1.0, // Increased from 0.8
           fillColor: '#3b82f6',
-          fillOpacity: 0.4,
+          fillOpacity: 0.7, // Increased from 0.4
         };
       } else if (segment.type === 'reservoir') {
         return {
           color: '#1e3a8a', // Darker blue for reservoirs
-          weight: 2,
-          opacity: 0.8,
+          weight: 5, // Increased from 2
+          opacity: 1.0, // Increased from 0.8
           fillColor: '#2563eb',
-          fillOpacity: 0.4,
+          fillOpacity: 0.7, // Increased from 0.4
         };
       } else {
         return {
           color: '#2563eb',
-          weight: 4,
-          opacity: 0.8,
+          weight: 6, // Increased from 4
+          opacity: 1.0, // Increased from 0.8
         };
       }
     }
