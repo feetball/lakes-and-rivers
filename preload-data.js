@@ -1,6 +1,3 @@
-
-
-
 // Polyfill fetch for Node.js if needed
 if (typeof fetch === 'undefined') {
   global.fetch = (...args) => import('node-fetch').then(({default: fetch}) => fetch(...args));
@@ -111,8 +108,12 @@ async function preloadData(host = 'app', port = 3000) {
     const waterwaysFile = path.join(dataDir, 'texas-waterways.json');
     const floodFile = path.join(dataDir, 'texas-flood-stages.json');
     
+    // Always attempt to preload USGS and waterways data
     console.log('[PRELOAD] Loading USGS stations from static file...');
     let usgsLoaded = false;
+    if (!fs.existsSync(usgsFile + '.gz') && !fs.existsSync(usgsFile)) {
+      console.error(`[PRELOAD] ✗ USGS stations file not found: ${usgsFile} (.gz)`);
+    }
     const usgsData = loadStaticJson(usgsFile);
     if (usgsData) {
       console.log(`[PRELOAD] Transferring USGS data from static file to Redis...`);
@@ -122,7 +123,6 @@ async function preloadData(host = 'app', port = 3000) {
         data: usgsData,
         ttl: 24 * 60 * 60 // 24 hours
       }, 3, serverInfo.host, serverInfo.port);
-      
       if (success) {
         console.log(`[PRELOAD] ✓ USGS stations transferred to Redis: ${usgsData.value?.timeSeries?.length || 0} stations`);
         usgsLoaded = true;
@@ -130,11 +130,14 @@ async function preloadData(host = 'app', port = 3000) {
         console.warn('[PRELOAD] ✗ Failed to transfer USGS stations to Redis');
       }
     } else {
-      console.warn(`[PRELOAD] ✗ USGS stations file not found: ${usgsFile}`);
+      console.error(`[PRELOAD] ✗ USGS stations data could not be loaded from file: ${usgsFile}`);
     }
-    
+
     console.log('[PRELOAD] Loading waterways from static file...');
     let waterwaysLoaded = false;
+    if (!fs.existsSync(waterwaysFile + '.gz') && !fs.existsSync(waterwaysFile)) {
+      console.error(`[PRELOAD] ✗ Waterways file not found: ${waterwaysFile} (.gz)`);
+    }
     const waterwaysData = loadStaticJson(waterwaysFile);
     if (waterwaysData) {
       console.log(`[PRELOAD] Transferring waterways data from static file to Redis...`);
@@ -144,7 +147,6 @@ async function preloadData(host = 'app', port = 3000) {
         data: waterwaysData,
         ttl: 24 * 60 * 60 // 24 hours
       }, 3, serverInfo.host, serverInfo.port);
-      
       if (success) {
         console.log(`[PRELOAD] ✓ Waterways transferred to Redis: ${waterwaysData.elements?.length || 0} elements`);
         waterwaysLoaded = true;
@@ -152,7 +154,7 @@ async function preloadData(host = 'app', port = 3000) {
         console.warn('[PRELOAD] ✗ Failed to transfer waterways to Redis');
       }
     } else {
-      console.warn(`[PRELOAD] ✗ Waterways file not found: ${waterwaysFile}`);
+      console.error(`[PRELOAD] ✗ Waterways data could not be loaded from file: ${waterwaysFile}`);
     }
     
     console.log('[PRELOAD] Loading flood stages from static file...');

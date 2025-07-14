@@ -106,3 +106,15 @@ if (isRailway && isProduction) {
     process.exit(code);
   });
 }
+
+// Ensure preloadData is called on every startup
+setTimeout(async () => {
+  try {
+    console.log('[SERVER] Starting preload of static data...');
+    const { preloadData } = require('./preload-data.js');
+    await preloadData({ host: 'localhost', port: process.env.REDIS_PORT || 6379 });
+    console.log('[SERVER] ✓ Preload complete.');
+  } catch (err) {
+    console.error('[SERVER] ✗ Preload failed:', err);
+  }
+}, 2000);
