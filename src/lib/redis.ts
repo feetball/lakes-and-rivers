@@ -249,10 +249,14 @@ export async function cacheTexasStations() {
           if (data && data.value && data.value.timeSeries && data.value.timeSeries.length > 0) {
             let newCount = 0;
             for (const ts of data.value.timeSeries) {
-              if (!allIds.has(ts.sourceInfo.siteCode[0]?.value)) {
-                allTimeSeries.push(ts);
-                allIds.add(ts.sourceInfo.siteCode[0]?.value);
-                newCount++;
+              // Validate data structure before accessing nested properties
+              if (ts?.sourceInfo?.siteCode?.length > 0) {
+                const siteId = ts.sourceInfo.siteCode[0]?.value;
+                if (siteId && !allIds.has(siteId)) {
+                  allTimeSeries.push(ts);
+                  allIds.add(siteId);
+                  newCount++;
+                }
               }
             }
             totalFetched += data.value.timeSeries.length;

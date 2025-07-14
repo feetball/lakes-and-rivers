@@ -60,7 +60,7 @@ export async function railwayCacheClear() {
             
             if (preloadResponse.ok) {
               // Run preload via the preload script
-              const { spawn } = require('child_process');
+              const { spawn } = await import('child_process');
               const preloadProcess = spawn('node', ['preload-data.js'], {
                 stdio: 'inherit'
               });

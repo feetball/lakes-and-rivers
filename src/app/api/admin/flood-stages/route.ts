@@ -232,6 +232,9 @@ export async function GET(request: NextRequest) {
       const uniqueSites = new Map();
       
       usgsData.value.timeSeries.forEach((ts: any) => {
+        // Validate data structure before accessing nested properties
+        if (!ts?.sourceInfo?.siteCode?.length) return;
+        
         const siteId = ts.sourceInfo.siteCode[0]?.value;
         const siteName = ts.sourceInfo.siteName;
         

@@ -119,11 +119,14 @@ async function fetchUSGSDataWithGrid(
           if (response.data?.value?.timeSeries && response.data.value.timeSeries.length > 0) {
             let newCount = 0;
             for (const ts of response.data.value.timeSeries) {
-              const siteId = ts.sourceInfo.siteCode[0]?.value;
-              if (siteId && !allIds.has(siteId)) {
-                allTimeSeries.push(ts);
-                allIds.add(siteId);
-                newCount++;
+              // Validate data structure before accessing nested properties
+              if (ts?.sourceInfo?.siteCode?.length > 0) {
+                const siteId = ts.sourceInfo.siteCode[0]?.value;
+                if (siteId && !allIds.has(siteId)) {
+                  allTimeSeries.push(ts);
+                  allIds.add(siteId);
+                  newCount++;
+                }
               }
             }
             totalFetched += response.data.value.timeSeries.length;
@@ -159,7 +162,14 @@ function processUSGSResponse(responseData: any, hours: number): any[] {
   if (responseData?.value?.timeSeries) {
     console.log('Processing', responseData.value.timeSeries.length, 'time series records');
     
-    sites = responseData.value.timeSeries.map((timeSeries: any) => {
+    sites = responseData.value.timeSeries
+      .filter((timeSeries: any) => {
+        // Validate required data structure
+        return timeSeries?.sourceInfo?.siteCode?.length > 0 &&
+               timeSeries?.sourceInfo?.geoLocation?.geogLocation &&
+               timeSeries?.values?.length > 0;
+      })
+      .map((timeSeries: any) => {
       const sourceInfo = timeSeries.sourceInfo;
       const siteCode = sourceInfo.siteCode[0]?.value || '';
       const location = sourceInfo.geoLocation.geogLocation;

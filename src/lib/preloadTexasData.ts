@@ -1,6 +1,5 @@
 
-const { cacheTexasStations, cacheTexasWaterways } = require('./redis');
-
+import { cacheTexasStations, cacheTexasWaterways } from './redis';
 
 async function preloadTexasData() {
   // Preload all Texas USGS stations
@@ -10,7 +9,7 @@ async function preloadTexasData() {
 }
 
 // If run directly (node preloadTexasData.js), execute preload
-if (require.main === module) {
+if (typeof require !== 'undefined' && require.main === module) {
   preloadTexasData().then(() => {
     console.log('Texas data preloaded into Redis.');
     process.exit(0);
