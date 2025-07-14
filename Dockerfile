@@ -20,7 +20,7 @@ COPY . .
 # Next.js collects completely anonymous telemetry data about general usage.
 # Learn more here: https://nextjs.org/telemetry
 # Uncomment the following line in case you want to disable telemetry during the build.
-ENV NEXT_TELEMETRY_DISABLED 1
+ENV NEXT_TELEMETRY_DISABLED=1
 
 RUN npm run build
 
@@ -66,8 +66,7 @@ USER nextjs
 EXPOSE 3000
 
 ENV PORT=3000
-# set hostname to localhost
-ENV HOSTNAME=localhost
+ENV HOSTNAME="0.0.0.0"
 
 # Add wait-for-redis script and use it to block until Redis is ready
 COPY --chown=nextjs:nodejs wait-for-redis.sh ./
