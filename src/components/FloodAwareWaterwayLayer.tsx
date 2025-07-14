@@ -116,7 +116,30 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({
     return waterways.map(waterway => {
       let nearestGauge: WaterSite | undefined;
       let minDistance = Infinity;
+      
+      // Ensure coordinates exist and are not empty
+      if (!waterway.coordinates || waterway.coordinates.length === 0) {
+        return {
+          id: waterway.id,
+          name: waterway.name,
+          type: waterway.type,
+          coordinates: waterway.coordinates || [],
+          floodRisk: 'unknown' as const
+        };
+      }
+      
       const midpoint = waterway.coordinates[Math.floor(waterway.coordinates.length / 2)];
+      
+      // Ensure midpoint is a valid coordinate array
+      if (!midpoint || !Array.isArray(midpoint) || midpoint.length < 2) {
+        return {
+          id: waterway.id,
+          name: waterway.name,
+          type: waterway.type,
+          coordinates: waterway.coordinates,
+          floodRisk: 'unknown' as const
+        };
+      }
 
       gaugeSites.forEach(gauge => {
         const distance = calculateDistance(

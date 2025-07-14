@@ -93,10 +93,10 @@ const BasicChart: React.FC<BasicChartProps> = ({
         
         {/* Time labels */}
         <text x={padding} y={height - 2} fontSize="9" fill="#666" className="text-xs">
-          {new Date(data[0].time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+          {data && data.length > 0 ? new Date(data[0].time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}
         </text>
         <text x={width - padding - 30} y={height - 2} fontSize="9" fill="#666" className="text-xs">
-          {new Date(data[data.length - 1].time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+          {data && data.length > 0 ? new Date(data[data.length - 1].time).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : ''}
         </text>
       </svg>
     </div>

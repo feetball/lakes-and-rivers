@@ -121,15 +121,18 @@ const MapChartOverlay: React.FC<MapChartOverlayProps> = ({ site, position, gauge
 
   // Format data for recharts, only last N hours
   const now = Date.now();
-  const chartData = site.chartData
-    .filter(point => {
-      const t = typeof point.time === 'string' ? Date.parse(point.time) : point.time;
-      return t >= now - globalTrendHours * 60 * 60 * 1000;
-    })
-    .map(point => ({
-      value: point.value,
-      timestamp: point.time
-    }));
+  const chartData = site.chartData && Array.isArray(site.chartData) 
+    ? site.chartData
+        .filter(point => {
+          if (!point || typeof point !== 'object') return false;
+          const t = typeof point.time === 'string' ? Date.parse(point.time) : point.time;
+          return !isNaN(t) && t >= now - globalTrendHours * 60 * 60 * 1000;
+        })
+        .map(point => ({
+          value: point.value,
+          timestamp: point.time
+        }))
+    : [];
 
   // Calculate chart center and gauge position for SVG arrow
   const svgChartWidth = 320;

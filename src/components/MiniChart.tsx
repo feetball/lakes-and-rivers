@@ -29,8 +29,8 @@ const MiniChart: React.FC<MiniChartProps> = ({
   const values = data.map(d => d.value);
   const minValue = Math.min(...values);
   const maxValue = Math.max(...values);
-  const firstValue = values[0];
-  const lastValue = values[values.length - 1];
+  const firstValue = values.length > 0 ? values[0] : 0;
+  const lastValue = values.length > 0 ? values[values.length - 1] : 0;
   const trend = lastValue > firstValue ? '↗️' : lastValue < firstValue ? '↘️' : '→';
   const trendColor = lastValue > firstValue ? 'text-red-600' : lastValue < firstValue ? 'text-blue-600' : 'text-gray-600';
 
@@ -43,8 +43,8 @@ const MiniChart: React.FC<MiniChartProps> = ({
     return '▂';
   }).join('');
 
-  const startTime = new Date(data[0].time);
-  const endTime = new Date(data[data.length - 1].time);
+  const startTime = data.length > 0 ? new Date(data[0].time) : new Date();
+  const endTime = data.length > 0 ? new Date(data[data.length - 1].time) : new Date();
 
   return (
     <div className="w-full bg-white border rounded p-3 break-words whitespace-normal" style={{ height: `${height}px` }}>
