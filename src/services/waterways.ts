@@ -35,6 +35,19 @@ export class WaterwayService {
       
       const waterways = response.data.waterways || [];
       const lakeCount = waterways.filter((w: any) => w.type === 'lake' || w.type === 'reservoir').length;
+      
+      // Debug the first few waterways to see their structure
+      const firstFew = waterways.slice(0, 3);
+      console.log('WaterwayService first few waterways:', firstFew.map((w: any) => ({
+        id: w.id,
+        name: w.name,
+        type: w.type,
+        hasCoordinates: !!w.coordinates,
+        coordinatesLength: w.coordinates?.length || 0,
+        coordinatesFirst: w.coordinates?.[0],
+        fullCoordinates: w.coordinates // Show full coordinates array
+      })));
+      
       console.log('WaterwayService filtered waterways:', {
         totalWaterways: waterways.length,
         lakesAndReservoirs: lakeCount,

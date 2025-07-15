@@ -209,7 +209,8 @@ async function fetchTexasWaterways() {
             way["waterway"~"^(river|stream|creek|canal|ditch)$"](${south},${west},${north},${east});
             relation["waterway"~"^(river|stream|creek|canal)$"](${south},${west},${north},${east});
           );
-          out body;
+          (._;>;);
+          out geom;
         `;
       
       console.log(`[GENERATE] Overpass batch row ${row} col ${col} bbox: S${south} W${west} N${north} E${east}`);
@@ -231,20 +232,8 @@ async function fetchTexasWaterways() {
           let newCount = 0;
           for (const el of data.elements) {
             if (!allIds.has(el.id)) {
-              // Only keep essential properties to reduce memory usage
-              const filteredElement = {
-                type: el.type,
-                id: el.id,
-                lat: el.lat,
-                lon: el.lon,
-                nodes: el.nodes,
-                tags: el.tags ? {
-                  name: el.tags.name,
-                  waterway: el.tags.waterway,
-                  natural: el.tags.natural
-                } : undefined
-              };
-              allElements.push(filteredElement);
+              // Keep full geometry for waterways data
+              allElements.push(el);
               allIds.add(el.id);
               newCount++;
             }

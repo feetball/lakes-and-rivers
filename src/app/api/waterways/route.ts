@@ -85,15 +85,16 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
       else if (element.tags?.landuse === 'reservoir') type = 'reservoir';
       
       // Handle coordinates for ways vs relations, supporting both cached and live data
-      let coordinates = [];
-      
+      let coordinates: Array<[number, number]> = [];
       if (element.type === 'way') {
         if (element.geometry) {
           // Live data with full geometry
-          coordinates = element.geometry.map((point: any) => [point.lat, point.lon]);
+          coordinates = element.geometry
+            .map((point: any) => [point.lat, point.lon])
+            .filter((coord) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
         } else if (element.lat !== undefined && element.lon !== undefined) {
           // Cached data with single point
-          coordinates = [[element.lat, element.lon]];
+          coordinates = [[element.lat, element.lon]].filter((coord) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
         }
         // Note: cached data with nodes but no geometry would need node resolution
         // For now, skip ways that only have nodes without resolved geometry
@@ -103,19 +104,17 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
           .filter((member: any) => member.role === 'outer' && member.type === 'way')
           .map((member: any) => waysMap.get(member.ref))
           .filter((way: any) => way && way.geometry);
-        
         if (outerWays.length > 0) {
           // Combine all outer ways into a single coordinate array
           // This creates a more complete boundary for large lakes
           const allCoordinates: number[][] = [];
-          
           outerWays.forEach((way: any) => {
-            const wayCoords = way.geometry.map((point: any) => [point.lat, point.lon]);
+            const wayCoords = way.geometry
+              .map((point: any) => [point.lat, point.lon])
+              .filter((coord) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
             allCoordinates.push(...wayCoords);
           });
-          
           coordinates = allCoordinates;
-          
           // If the coordinates don't form a closed polygon, close it
           if (coordinates.length > 0 && 
               (coordinates[0][0] !== coordinates[coordinates.length - 1][0] || 
@@ -124,7 +123,6 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
           }
         }
       }
-      
       return {
         id: element.id.toString(),
         name: element.tags?.name || `Unnamed ${type}`,
@@ -135,144 +133,7 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
     
     console.log('[DEBUG] After mapping:', filtered.length, 'waterways created');
     
-    const withCoords = filtered
-    .map((element: any) => {
-      // Determine the type
-      let type = 'river';
-      if (element.tags?.waterway === 'stream') type = 'stream';
-      else if (element.tags?.natural === 'water') {
-        // Check if it's a lake or reservoir based on name or other tags
-        const name = element.tags?.name?.toLowerCase() || '';
-        if (name.includes('reservoir') || name.includes('dam')) {
-          type = 'reservoir';
-        } else {
-          type = 'lake';
-        }
-      }
-      else if (element.tags?.landuse === 'reservoir') type = 'reservoir';
-      
-      // Handle coordinates for ways vs relations, supporting both cached and live data
-      let coordinates = [];
-      
-      if (element.type === 'way') {
-        if (element.geometry) {
-          // Live data with full geometry
-          coordinates = element.geometry.map((point: any) => [point.lat, point.lon]);
-        } else if (element.lat !== undefined && element.lon !== undefined) {
-          // Cached data with single point
-          coordinates = [[element.lat, element.lon]];
-        }
-        // Note: cached data with nodes but no geometry would need node resolution
-        // For now, skip ways that only have nodes without resolved geometry
-      } else if (element.type === 'relation' && element.members) {
-        // For relations, find outer ways and combine their geometries (live data only)
-        const outerWays = element.members
-          .filter((member: any) => member.role === 'outer' && member.type === 'way')
-          .map((member: any) => waysMap.get(member.ref))
-          .filter((way: any) => way && way.geometry);
-        
-        if (outerWays.length > 0) {
-          // Combine all outer ways into a single coordinate array
-          // This creates a more complete boundary for large lakes
-          const allCoordinates: number[][] = [];
-          
-          outerWays.forEach((way: any) => {
-            const wayCoords = way.geometry.map((point: any) => [point.lat, point.lon]);
-            allCoordinates.push(...wayCoords);
-          });
-          
-          coordinates = allCoordinates;
-          
-          // If the coordinates don't form a closed polygon, close it
-          if (coordinates.length > 0 && 
-              (coordinates[0][0] !== coordinates[coordinates.length - 1][0] || 
-               coordinates[0][1] !== coordinates[coordinates.length - 1][1])) {
-            coordinates.push(coordinates[0]);
-          }
-        }
-      }
-      
-      return {
-        id: element.id.toString(),
-        name: element.tags?.name || `Unnamed ${type}`,
-        type,
-        coordinates
-      };
-    })
-    .filter((waterway: any) => {
-      if (waterway.coordinates.length === 0) {
-        console.log('[DEBUG] Filtered out waterway with no coordinates:', waterway.name);
-        return false;
-      }
-      return true;
-    })
-    .filter((waterway: any) => {
-      // First filter: Only include waterways that are within Texas boundaries
-      if (!isWithinTexas(waterway.coordinates)) {
-        console.log('[DEBUG] Filtered out waterway outside Texas:', waterway.name, 'coords:', waterway.coordinates.slice(0, 2));
-        return false;
-      }
-      
-      // Additional filtering for major waterways by name patterns and type
-      const name = waterway.name.toLowerCase();
-      const type = waterway.type;
-      
-      // For lakes and reservoirs, only include major ones
-      if (type === 'lake' || type === 'reservoir') {
-        // Major Texas lakes by name patterns
-        const isMajorLake = name.includes('lake travis') ||
-                           name.includes('lake austin') ||
-                           name.includes('lake georgetown') ||
-                           name.includes('lake buchanan') ||
-                           name.includes('canyon lake') ||
-                           name.includes('lake marble falls') ||
-                           name.includes('lake lyndon') ||
-                           name.includes('lady bird lake') ||
-                           name.includes('town lake') ||
-                           name.includes('inks lake') ||
-                           name.includes('lake walter') ||
-                           name.includes('granger lake') ||
-                           name.includes('stillhouse hollow') ||
-                           name.includes('belton lake') ||
-                           name.includes('somerville lake') ||
-                           name.includes('caddo lake') ||
-                           name.includes('sam rayburn') ||
-                           name.includes('toledo bend') ||
-                           (name.includes('lake') && waterway.coordinates.length > 50) || // Large lakes by coordinate count
-                           (name.includes('reservoir') && waterway.coordinates.length > 30); // Large reservoirs
-        
-        if (!isMajorLake) {
-          console.log('[DEBUG] Filtered out non-major lake/reservoir:', name, 'coords:', waterway.coordinates.length);
-        }
-        return isMajorLake;
-      }
-      
-      // For rivers and streams, include major Texas waterways
-      const isMajorTexasRiver = name.includes('river') || 
-                               name.includes('colorado') || 
-                               name.includes('guadalupe') || 
-                               name.includes('san gabriel') || 
-                               name.includes('blanco') || 
-                               name.includes('pedernales') || 
-                               name.includes('brazos') || 
-                               name.includes('trinity') || 
-                               name.includes('llano') || 
-                               name.includes('nueces') ||
-                               name.includes('rio grande') ||
-                               name.includes('sabine') ||
-                               name.includes('neches') ||
-                               name.includes('angelina') ||
-                               name.includes('red river') ||
-                               name.includes('canadian') ||
-                               name.includes('pecos') ||
-                               name.includes('concho') ||
-                               waterway.coordinates.length > 10; // Longer waterways are likely more significant
-      
-      if (!isMajorTexasRiver) {
-        console.log('[DEBUG] Filtered out non-major river/stream:', name, 'coords:', waterway.coordinates.length);
-      }
-      return isMajorTexasRiver;
-    });
+    return filtered;
 }
 
 export async function GET(request: NextRequest) {
@@ -350,6 +211,7 @@ export async function GET(request: NextRequest) {
             type: el.type,
             id: el.id,
             hasGeometry: !!el.geometry,
+            hasNodes: !!el.nodes,
             hasMembers: !!el.members,
             hasTags: !!el.tags,
             tags: el.tags ? {
@@ -361,16 +223,23 @@ export async function GET(request: NextRequest) {
           });
         });
         
-        const processedWaterways = processElements(elementsArray);
-        console.log('[DEBUG] After processing:', processedWaterways.length, 'waterways returned');
+        // Check if cached data has geometry - if not, fall through to live API call
+        const hasGeometry = elementsArray.some((el: any) => el.geometry || (el.lat !== undefined && el.lon !== undefined));
         
-        return NextResponse.json({ waterways: processedWaterways, cached: true }, {
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          },
-        });
+        if (hasGeometry) {
+          const processedWaterways = processElements(elementsArray);
+          console.log('[DEBUG] After processing cached data:', processedWaterways.length, 'waterways returned');
+          
+          return NextResponse.json({ waterways: processedWaterways, cached: true }, {
+            headers: {
+              'Access-Control-Allow-Origin': '*',
+              'Access-Control-Allow-Methods': 'GET',
+              'Access-Control-Allow-Headers': 'Content-Type',
+            },
+          });
+        } else {
+          console.log('[DEBUG] Cached Texas data lacks geometry, falling through to live API call');
+        }
       }
     }
 

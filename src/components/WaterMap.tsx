@@ -144,6 +144,19 @@ export default function WaterMap() {
       console.log('Loading waterways for bounds:', bbox);
       
       const waterwayData = await WaterwayService.getWaterways(bbox);
+      
+      // Debug what we're setting in state
+      console.log('[WaterMap DEBUG] About to setWaterways with:', {
+        length: waterwayData.length,
+        firstThree: waterwayData.slice(0, 3).map(w => ({
+          id: w.id,
+          name: w.name,
+          type: w.type,
+          coordinatesLength: w.coordinates?.length || 0,
+          firstCoord: w.coordinates?.[0]
+        }))
+      });
+      
       setWaterways(waterwayData);
       
       console.log('Loaded waterways:', waterwayData.length);

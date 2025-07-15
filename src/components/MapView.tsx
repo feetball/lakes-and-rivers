@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
@@ -507,8 +507,24 @@ const MapView: React.FC<MapViewProps> = ({
     };
   };
 
+  // Debug overlay: show count and types of waterways
+  const waterwayTypeCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    waterways.forEach(w => {
+      counts[w.type] = (counts[w.type] || 0) + 1;
+    });
+    return counts;
+  }, [waterways]);
+
   return (
     <div className="relative h-full w-full">
+      {/* DEBUG: Waterway counts overlay */}
+      <div style={{position: 'absolute', top: 8, left: 8, zIndex: 2000, background: 'rgba(255,255,255,0.85)', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
+        <div><strong>Waterways Rendered:</strong> {waterways.length}</div>
+        {Object.entries(waterwayTypeCounts).map(([type, count]) => (
+          <div key={type}>{`${type.charAt(0).toUpperCase() + type.slice(1)}: ${String(count)}`}</div>
+        ))}
+      </div>
       {/* Chart Time Range and Controls - Now Draggable */}
       {chartControlsVisible && (
         <DraggableBox
