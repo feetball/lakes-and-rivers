@@ -8,8 +8,10 @@ const CONFIG = {
   TEXAS_BBOX: { north: 36.5, south: 25.8, east: -93.5, west: -106.7 },
   
   // Grid configuration for batching
-  GRID_SIZE: 0.5, // degrees (about 35 miles at Texas latitude)
-  
+  GRID_SIZE: 1, 
+//   GRID_SIZE: 0.5, // degrees (about 35 miles at Texas latitude)
+//   GRID_SIZE: 1.45, for ~100 miles
+// GRID_SIZE: 2.9, for ~200 miles
   // Output directory
   OUTPUT_DIR: path.join(__dirname, '..', 'static-data', 'waterways'),
   
@@ -20,11 +22,11 @@ const CONFIG = {
   COMBINED_FILE: path.join(__dirname, '..', 'static-data', 'texas-waterways.json'),
   
   // Request delay to avoid overloading Overpass API
-  REQUEST_DELAY: 2000, // 2 seconds between requests
+  REQUEST_DELAY: 1000, // 1 seconds between requests
   
   // Retry configuration
   MAX_RETRIES: 3,
-  RETRY_DELAY: 5000, // 5 seconds
+  RETRY_DELAY: 2000, // 2 seconds
 };
 
 // Ensure output directory exists
@@ -146,16 +148,41 @@ async function fetchWaterwaysForBox(box, retryCount = 0) {
     const elements = response.data.elements || [];
     console.log(`Box ${box.id}: Found ${elements.length} elements`);
     
-    // Save individual box data
-    const boxFile = path.join(CONFIG.OUTPUT_DIR, `box-${box.id}.json`);
-    fs.writeFileSync(boxFile, JSON.stringify({
+    // Prepare box data
+    const boxData = {
       boxId: box.id,
       bbox: box.bbox,
       elements,
       fetchTime: new Date().toISOString(),
       elementCount: elements.length
-    }, null, 2));
-    
+    };
+
+    // Validate JSON before writing
+    let jsonString;
+    try {
+      jsonString = JSON.stringify(boxData, null, 2);
+    } catch (err) {
+      console.error(`Box ${box.id}: Failed to serialize JSON:`, err.message);
+      return {
+        success: false,
+        error: 'JSON serialization failed',
+        box: box.id
+      };
+    }
+
+    // Save individual box data if valid
+    const boxFile = path.join(CONFIG.OUTPUT_DIR, `box-${box.id}.json`);
+    try {
+      fs.writeFileSync(boxFile, jsonString);
+    } catch (err) {
+      console.error(`Box ${box.id}: Failed to write file:`, err.message);
+      return {
+        success: false,
+        error: 'File write failed',
+        box: box.id
+      };
+    }
+
     return {
       success: true,
       elements,
@@ -192,7 +219,66 @@ function combineBoxFiles(state) {
     
     if (fs.existsSync(boxFile)) {
       try {
-        const boxData = JSON.parse(fs.readFileSync(boxFile, 'utf8'));
+        const stats = fs.statSync(boxFile);
+        const fileSizeMB = stats.size / (1024 * 1024);
+        
+        if (fileSizeMB > 20) {
+          console.log(`Large file detected: ${boxFile} (${fileSizeMB.toFixed(1)}MB) - processing in chunks`);
+          
+          // Read file in chunks to avoid memory issues
+          const fileContent = fs.readFileSync(boxFile, 'utf8');
+          let boxData;
+          
+          try {
+            // Try to parse the JSON structure first
+            const jsonStart = fileContent.indexOf('"elements":[') + '"elements":['.length;
+            const jsonEnd = fileContent.lastIndexOf('],"fetchTime"');
+            
+            if (jsonStart > 0 && jsonEnd > 0) {
+              // Parse metadata without elements
+              const metadataEnd = fileContent.indexOf('"elements":[');
+              const metadataStr = fileContent.substring(0, metadataEnd) + '"elements":[],' + fileContent.substring(jsonEnd + 1);
+              const metadata = JSON.parse(metadataStr);
+              
+              // Process elements in chunks
+              const elementsStr = fileContent.substring(jsonStart, jsonEnd);
+              const elements = [];
+              
+              // Split elements string by objects (simple approach)
+              const elementChunks = elementsStr.split('},{');
+              for (let i = 0; i < elementChunks.length; i += 1000) { // Process 1000 elements at a time
+                const chunk = elementChunks.slice(i, i + 1000);
+                let chunkStr = chunk.join('},{');
+                
+                if (i > 0) chunkStr = '{' + chunkStr;
+                if (i + 1000 < elementChunks.length) chunkStr = chunkStr + '}';
+                
+                try {
+                  const chunkElements = JSON.parse('[' + chunkStr + ']');
+                  elements.push(...chunkElements);
+                } catch (e) {
+                  console.warn(`Failed to parse chunk ${i}-${i+1000} for ${boxFile}`);
+                }
+              }
+              
+              boxData = {
+                ...metadata,
+                elements: elements
+              };
+              
+            } else {
+              // Fallback to regular parsing
+              boxData = JSON.parse(fileContent);
+            }
+          } catch (e) {
+            console.warn(`Chunk processing failed for ${boxFile}, trying regular parse`);
+            boxData = JSON.parse(fileContent);
+          }
+        } else {
+          const fileContent = fs.readFileSync(boxFile, 'utf8');
+          boxData = JSON.parse(fileContent);
+        }
+        
         allElements.push(...boxData.elements);
         processedBoxes.push({
           boxId,
@@ -201,7 +287,15 @@ function combineBoxFiles(state) {
           fetchTime: boxData.fetchTime
         });
       } catch (error) {
-        console.warn(`Failed to read box file ${boxFile}:`, error.message);
+        // Gather more details about the file
+        let details = '';
+        try {
+          const stats = fs.statSync(boxFile);
+          details += `Size: ${(stats.size / (1024 * 1024)).toFixed(1)}MB. `;
+        } catch (e) {
+          details += 'Could not get file size. ';
+        }
+        console.warn(`Failed to read box file ${boxFile}: ${error.message}. ${details}`);
       }
     }
   }
@@ -233,7 +327,49 @@ function combineBoxFiles(state) {
     elements: uniqueElements
   };
   
-  fs.writeFileSync(CONFIG.COMBINED_FILE, JSON.stringify(combinedData, null, 2));
+  // Write file in streaming manner to avoid string length limits
+  try {
+    const writeStream = fs.createWriteStream(CONFIG.COMBINED_FILE);
+    
+    // Write opening brace and metadata
+    writeStream.write('{\n');
+    writeStream.write(`  "metadata": ${JSON.stringify(combinedData.metadata, null, 2).replace(/^/gm, '  ')},\n`);
+    writeStream.write(`  "boxes": ${JSON.stringify(combinedData.boxes, null, 2).replace(/^/gm, '  ')},\n`);
+    writeStream.write('  "elements": [\n');
+    
+    // Write elements in chunks
+    const chunkSize = 1000;
+    for (let i = 0; i < uniqueElements.length; i += chunkSize) {
+      const chunk = uniqueElements.slice(i, i + chunkSize);
+      const chunkStr = JSON.stringify(chunk, null, 4).slice(1, -1); // Remove [ and ]
+      
+      if (i > 0) writeStream.write(',\n');
+      writeStream.write(chunkStr);
+      
+      if (i + chunkSize < uniqueElements.length) {
+        writeStream.write(',');
+      }
+    }
+    
+    writeStream.write('\n  ]\n');
+    writeStream.write('}\n');
+    writeStream.end();
+    
+    console.log(`Combined data written to ${CONFIG.COMBINED_FILE} using streaming`);
+  } catch (streamError) {
+    console.error('Streaming write failed, trying compressed format:', streamError.message);
+    
+    // Fallback: write a compressed version with just metadata and element count
+    const compressedData = {
+      metadata: combinedData.metadata,
+      boxes: processedBoxes,
+      elementCount: uniqueElements.length,
+      note: "Elements too large for single file - check individual box files"
+    };
+    
+    fs.writeFileSync(CONFIG.COMBINED_FILE, JSON.stringify(compressedData, null, 2));
+    console.log(`Compressed summary written to ${CONFIG.COMBINED_FILE}`);
+  }
   
   console.log(`Combined data saved to ${CONFIG.COMBINED_FILE}`);
   console.log(`Total elements: ${uniqueElements.length} (removed ${allElements.length - uniqueElements.length} duplicates)`);
@@ -251,42 +387,42 @@ async function generateWaterways() {
   console.log(`Processing ${state.totalBoxes} total boxes`);
   console.log(`Starting from box ${state.currentBox}`);
   
-  // Process remaining boxes
-  for (let i = state.currentBox; i < state.boxes.length; i++) {
-    const box = state.boxes[i];
-    
-    console.log(`\nProcessing box ${i + 1}/${state.totalBoxes} (ID: ${box.id})`);
-    
-    const result = await fetchWaterwaysForBox(box);
-    
-    if (result.success) {
-      state.completedBoxes.push(box.id);
-      console.log(`✅ Box ${box.id} completed (${result.elements.length} elements)`);
-    } else {
-      state.failedBoxes.push({
-        boxId: box.id,
-        error: result.error,
-        bbox: box.bbox
-      });
-      console.log(`❌ Box ${box.id} failed: ${result.error}`);
+  // Identify missing box files and process them
+  const missingBoxes = [];
+  for (const box of state.boxes) {
+    const boxFile = path.join(CONFIG.OUTPUT_DIR, `box-${box.id}.json`);
+    if (!fs.existsSync(boxFile)) {
+      missingBoxes.push(box);
     }
-    
-    // Update state
-    state.currentBox = i + 1;
-    saveState(state);
-    
-    // Progress report
-    const completed = state.completedBoxes.length;
-    const failed = state.failedBoxes.length;
-    const remaining = state.totalBoxes - completed - failed;
-    
-    console.log(`Progress: ${completed} completed, ${failed} failed, ${remaining} remaining`);
-    
-    // Delay between requests to be respectful to the API
-    if (i < state.boxes.length - 1) {
+  }
+
+  if (missingBoxes.length > 0) {
+    console.log(`Found ${missingBoxes.length} missing box files. Downloading them again...`);
+    for (const box of missingBoxes) {
+      console.log(`\nProcessing missing box (ID: ${box.id})`);
+      const result = await fetchWaterwaysForBox(box);
+      if (result.success) {
+        if (!state.completedBoxes.includes(box.id)) {
+          state.completedBoxes.push(box.id);
+        }
+        console.log(`✅ Box ${box.id} completed (${result.elements.length} elements)`);
+      } else {
+        if (!state.failedBoxes.some(b => b.boxId === box.id)) {
+          state.failedBoxes.push({
+            boxId: box.id,
+            error: result.error,
+            bbox: box.bbox
+          });
+        }
+        console.log(`❌ Box ${box.id} failed: ${result.error}`);
+      }
+      saveState(state);
+      // Delay between requests
       console.log(`Waiting ${CONFIG.REQUEST_DELAY}ms before next request...`);
       await new Promise(resolve => setTimeout(resolve, CONFIG.REQUEST_DELAY));
     }
+  } else {
+    console.log('No missing box files detected. All boxes are present.');
   }
   
   console.log('\n🎉 All boxes processed!');

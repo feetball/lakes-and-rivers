@@ -1,36 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
+import { authenticate } from '@/lib/auth';
+import { isSafeJson } from '@/lib/security';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
-
-// Simple authentication function
-function authenticate(request: NextRequest): boolean {
-  const authHeader = request.headers.get('authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    return false;
-  }
-
-  try {
-    const base64Credentials = authHeader.slice(6);
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-    const [username, password] = credentials.split(':');
-
-    const adminUsername = process.env.ADMIN_USERNAME;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-
-    if (!adminPassword) {
-      console.warn('ADMIN_PASSWORD not set - flood stage admin disabled');
-      return false;
-    }
-
-    return username === adminUsername && password === adminPassword;
-  } catch (error) {
-    console.error('Authentication error:', error);
-    return false;
-  }
-}
 
 // Known flood stages from National Weather Service and USGS historical data
 const VERIFIED_FLOOD_STAGES: { [siteId: string]: {
@@ -314,6 +288,16 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { action, siteId, floodStages } = body;
+
+    // Basic validation
+    if (action === 'update') {
+      if (!siteId || typeof siteId !== 'string') {
+        return NextResponse.json({ error: 'Invalid or missing siteId' }, { status: 400 });
+      }
+      if (!floodStages || !isSafeJson(floodStages)) {
+        return NextResponse.json({ error: 'Invalid floodStages payload' }, { status: 400 });
+      }
+    }
 
     if (action === 'update' && siteId && floodStages) {
       // Update flood stages for a specific site

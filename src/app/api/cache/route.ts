@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
+import { authenticate, isPreloadRequest } from '@/lib/auth';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
@@ -61,6 +62,13 @@ export async function GET() {
 }
 
 export async function DELETE(request: NextRequest) {
+  // Require authentication for deleting cache keys, allow preload/health checks
+  if (!authenticate(request) && !isPreloadRequest(request)) {
+    return new NextResponse('Unauthorized', {
+      status: 401,
+      headers: { 'WWW-Authenticate': 'Basic realm="Cache Admin"' }
+    });
+  }
   try {
     const { searchParams } = new URL(request.url);
     const cacheType = searchParams.get('type');

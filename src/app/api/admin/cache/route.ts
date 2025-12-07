@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
 import { cacheSet } from '@/lib/redis';
+import { authenticate, isPreloadRequest, isFormBasedRequest } from '@/lib/auth';
+import { isSafeJson, validateAdminAction } from '@/lib/security';
 
 // In-memory cache hit/miss counters (reset on server restart)
 
@@ -35,79 +37,12 @@ export function recordCacheStat(type: 'waterways' | 'usgs' | 'other', hit: boole
 }
 
 // This route should be dynamic to avoid static generation during build
+
 export const dynamic = 'force-dynamic';
 
-// Simple authentication function
-function authenticate(request: NextRequest): boolean {
-  // DEBUG: Log if ADMIN_PASSWORD is set
-  if (process.env.NODE_ENV !== 'production') {
-    if (!process.env.ADMIN_PASSWORD) {
-      console.warn('[DEBUG] ADMIN_PASSWORD is NOT set in process.env');
-    } else {
-      console.log('[DEBUG] ADMIN_PASSWORD is set in process.env');
-    }
-  }
-  const authHeader = request.headers.get('authorization');
-  
-  if (!authHeader || !authHeader.startsWith('Basic ')) {
-    return false;
-  }
+// Use shared helpers from lib/auth
 
-  try {
-    const base64Credentials = authHeader.slice(6); // Remove 'Basic '
-    const credentials = Buffer.from(base64Credentials, 'base64').toString('ascii');
-    const [username, password] = credentials.split(':');
-
-    // Check against environment variables
-    const adminUsername = process.env.ADMIN_USERNAME;
-    const adminPassword = process.env.ADMIN_PASSWORD;
-
-    if (!adminPassword) {
-      console.warn('ADMIN_PASSWORD not set - cache admin disabled');
-      return false;
-    }
-
-    return username === adminUsername && password === adminPassword;
-  } catch (error) {
-    console.error('Authentication error:', error);
-    return false;
-  }
-}
-
-// Check if request is from preload script (localhost or container-to-container during startup)
-function isPreloadRequest(request: NextRequest): boolean {
-  const userAgent = request.headers.get('user-agent') || '';
-  const host = request.headers.get('host') || '';
-  const xForwardedFor = request.headers.get('x-forwarded-for') || '';
-  
-  // Allow unauthenticated requests during startup from:
-  // 1. localhost/127.0.0.1 (local development)
-  // 2. app:3000 (Docker container-to-container communication)
-  // 3. Internal Docker network ranges
-  const isLocalOrInternal = host.includes('localhost') || 
-                           host.includes('127.0.0.1') || 
-                           host.includes('app:') ||
-                           xForwardedFor.includes('172.') || // Docker default network
-                           xForwardedFor.includes('192.168.') || // Common private networks
-                           xForwardedFor.includes('10.'); // Private network range
-  
-  return isLocalOrInternal && userAgent.includes('node');
-}
-
-// Check if this is a form-based request (from the admin HTML page)
-function isFormBasedRequest(request: NextRequest): boolean {
-  const userAgent = request.headers.get('user-agent') || '';
-  const referer = request.headers.get('referer') || '';
-  const origin = request.headers.get('origin') || '';
-  
-  // Check if request comes from browser accessing the admin page
-  return userAgent.includes('Mozilla') && (
-    referer.includes('/admin/cache.html') || 
-    origin.includes('localhost') || 
-    origin.includes('127.0.0.1') ||
-    referer.includes('admin')
-  );
-}
+// Use shared helpers from lib/auth
 
 // GET - Show cache admin interface (for browser access)
 export async function GET(request: NextRequest) {
@@ -216,6 +151,30 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const { action, key, data, ttl, usgs, waterways, flood } = body;
+
+    // Validate action and incoming payload types to avoid unsafe deserialization
+    const allowedActions = ['set', 'set-status', 'clear_all', 'clear_waterways', 'clear_usgs', 'clear_pattern'];
+    if (!validateAdminAction(action, allowedActions)) {
+      return NextResponse.json({ error: 'Invalid action' }, { status: 400 });
+    }
+
+    // Validate key if present
+    if (key && typeof key !== 'string') {
+      return NextResponse.json({ error: 'Invalid key; expected string' }, { status: 400 });
+    }
+
+    // Validate pattern for clear_pattern
+    if (action === 'clear_pattern') {
+      const patternVal = body.pattern;
+      if (!patternVal || typeof patternVal !== 'string' || patternVal.length > 128) {
+        return NextResponse.json({ error: 'Invalid pattern' }, { status: 400 });
+      }
+    }
+
+    // Validate data only allows plain JSON
+    if (data && !isSafeJson(data)) {
+      return NextResponse.json({ error: 'Invalid data payload' }, { status: 400 });
+    }
 
     switch (action) {
       case 'set':
