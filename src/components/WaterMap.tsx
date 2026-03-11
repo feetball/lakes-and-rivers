@@ -156,15 +156,17 @@ export default function WaterMap() {
     }
   }, [lastLoadedBounds, loadAll, clampToTexas, globalTrendHours]);
 
-  // Initialize with full Texas on mount
+  // Initialize: load gauge sites for all of Texas (cached/fast), but
+  // skip the Texas-wide waterway load — waterways will be loaded for the
+  // actual viewport once the map fires its first bounds-change event.
   useEffect(() => {
-    console.log('Initial load for full Texas:', TEXAS_BBOX);
+    console.log('Initial load — gauge sites for full Texas:', TEXAS_BBOX);
 
-    loadAll(TEXAS_BBOX, globalTrendHours, { maxSites: 500 });
+    loadSitesForBounds(TEXAS_BBOX, globalTrendHours, { maxSites: 500 });
 
     setLastLoadedBounds(TEXAS_BBOX);
     setCurrentViewBounds(TEXAS_BBOX);
-  }, [loadAll, globalTrendHours]);
+  }, [loadSitesForBounds, globalTrendHours]);
 
   // Update sites when trend hours change
   useEffect(() => {

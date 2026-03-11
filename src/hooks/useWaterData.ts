@@ -120,6 +120,8 @@ export function useWaterData(): UseWaterDataReturn {
 
   /**
    * Load waterways for a given bounding box.
+   * Merges new waterways with existing ones (keyed by id) so that
+   * a slow/empty response never wipes out previously loaded geometry.
    */
   const loadWaterwaysForBounds = useCallback(async (bbox: BBox) => {
     try {
@@ -127,23 +129,25 @@ export function useWaterData(): UseWaterDataReturn {
 
       const waterwayData = await WaterwayService.getWaterways(bbox);
 
-      console.log('[useWaterData DEBUG] About to setWaterways with:', {
-        length: waterwayData.length,
-        firstThree: waterwayData.slice(0, 3).map(w => ({
-          id: w.id,
-          name: w.name,
-          type: w.type,
-          coordinatesLength: w.coordinates?.length || 0,
-          firstCoord: w.coordinates?.[0]
-        }))
+      const withCoords = waterwayData.filter(w => w.coordinates && w.coordinates.length > 1);
+      console.log(`[useWaterData] Fetched ${waterwayData.length} waterways (${withCoords.length} with coords) for bbox`, bbox);
+
+      if (waterwayData.length === 0) {
+        console.log('[useWaterData] Empty response — keeping existing waterways');
+        return;
+      }
+
+      // Merge: keep existing waterways and add/update with new ones
+      setWaterways(prev => {
+        const merged = new Map<string, Waterway>();
+        for (const w of prev) merged.set(w.id, w);
+        for (const w of waterwayData) merged.set(w.id, w);
+        console.log(`[useWaterData] Merged waterways: ${prev.length} existing + ${waterwayData.length} new = ${merged.size} total`);
+        return Array.from(merged.values());
       });
-
-      setWaterways(waterwayData);
-
-      console.log('Loaded waterways:', waterwayData.length);
     } catch (err) {
       console.error('Error loading waterways:', err);
-      // Don't set error state for waterways, just continue without them
+      // Don't set error state or clear waterways — keep whatever we have
     }
   }, []);
 
