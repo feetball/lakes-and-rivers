@@ -99,6 +99,34 @@ interface GaugeSiteWithRisk {
   riverName: string;
 }
 
+/**
+ * Find the closest coordinate index on a polyline to a given point.
+ */
+function findClosestCoordIndex(coords: [number, number][], lat: number, lon: number): number {
+  let bestIdx = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < coords.length; i++) {
+    const d = degreeDistance(coords[i][0], coords[i][1], lat, lon);
+    if (d < bestDist) {
+      bestDist = d;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+interface GaugeProjection {
+  gauge: GaugeSiteWithRisk;
+  coordIndex: number;
+  distance: number;
+}
+
+interface WaterwaySegment {
+  coords: [number, number][];
+  risk: FloodRisk;
+  gaugeName: string | null;
+}
+
 const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({ waterways, gaugeSites, enabled }) => {
   // Pre-compute gauge site flood risks and extracted river names
   const gaugesWithRisk = useMemo((): GaugeSiteWithRisk[] => {
@@ -109,89 +137,113 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({ water
     }));
   }, [gaugeSites]);
 
-  // Build a map from normalized waterway name → best (worst) flood risk from matching gauges
-  const waterwayRiskMap = useMemo(() => {
-    const riskMap = new Map<string, { risk: FloodRisk; gaugeName: string }>();
+  // For each waterway, find ALL matching gauges and split into colored segments
+  const waterwaySegments = useMemo(() => {
+    const segmentMap = new Map<string, WaterwaySegment[]>();
 
-    if (!enabled) return riskMap;
+    if (!enabled) return segmentMap;
 
-    // Risk severity for comparison (higher = worse)
-    const riskSeverity: Record<FloodRisk, number> = {
-      extreme: 5, high: 4, moderate: 3, normal: 2, low: 1, unknown: 0,
-    };
+    for (const waterway of waterways) {
+      if (waterway.type === 'lake' || waterway.type === 'reservoir') continue;
 
-    for (const gauge of gaugesWithRisk) {
-      if (gauge.risk === 'unknown') continue;
+      const coords = waterway.coordinates?.filter(
+        (coord: [number, number]) =>
+          Array.isArray(coord) &&
+          coord.length === 2 &&
+          typeof coord[0] === "number" &&
+          typeof coord[1] === "number" &&
+          !isNaN(coord[0]) &&
+          !isNaN(coord[1]) &&
+          isFinite(coord[0]) &&
+          isFinite(coord[1])
+      );
+      if (!coords || coords.length <= 1) continue;
 
-      // Try to associate this gauge with waterways by name match
-      for (const waterway of waterways) {
-        if (waterway.type === 'lake' || waterway.type === 'reservoir') continue;
+      const wwName = normalizeRiverName(waterway.name);
 
-        const wwName = normalizeRiverName(waterway.name);
+      // Collect all gauges that match this waterway (by name or proximity)
+      const projections: GaugeProjection[] = [];
+
+      for (const gauge of gaugesWithRisk) {
+        if (gauge.risk === 'unknown') continue;
+
+        // Check name match
         const gaugeName = gauge.riverName;
-
-        // Check if the gauge's river name matches the waterway name
         const isNameMatch = wwName.length > 0 && gaugeName.length > 0 && (
           wwName.includes(gaugeName) || gaugeName.includes(wwName)
         );
 
         if (isNameMatch) {
-          const existing = riskMap.get(waterway.id);
-          if (!existing || riskSeverity[gauge.risk] > riskSeverity[existing.risk]) {
-            riskMap.set(waterway.id, { risk: gauge.risk, gaugeName: gauge.site.name });
+          const idx = findClosestCoordIndex(coords, gauge.site.latitude, gauge.site.longitude);
+          const dist = degreeDistance(coords[idx][0], coords[idx][1], gauge.site.latitude, gauge.site.longitude);
+          projections.push({ gauge, coordIndex: idx, distance: dist });
+        } else {
+          // Proximity check — find closest point on polyline
+          const idx = findClosestCoordIndex(coords, gauge.site.latitude, gauge.site.longitude);
+          const dist = degreeDistance(coords[idx][0], coords[idx][1], gauge.site.latitude, gauge.site.longitude);
+          if (dist < MAX_PROXIMITY_DEG) {
+            projections.push({ gauge, coordIndex: idx, distance: dist });
           }
         }
       }
-    }
 
-    return riskMap;
-  }, [waterways, gaugesWithRisk, enabled]);
+      if (projections.length === 0) continue;
 
-  // For waterways without a name match, fall back to geographic proximity
-  const getWaterwayRisk = useMemo(() => {
-    // Pre-compute midpoints for waterways that weren't matched by name
-    return (waterway: Waterway): { risk: FloodRisk; gaugeName: string | null } => {
-      // Check name-matched result first
-      const nameMatch = waterwayRiskMap.get(waterway.id);
-      if (nameMatch) return { risk: nameMatch.risk, gaugeName: nameMatch.gaugeName };
-
-      if (!enabled || waterway.type === 'lake' || waterway.type === 'reservoir') {
-        return { risk: 'unknown', gaugeName: null };
-      }
-
-      // Fall back to proximity: find nearest gauge to waterway midpoint
-      const coords = waterway.coordinates;
-      if (!coords || coords.length === 0) return { risk: 'unknown', gaugeName: null };
-
-      const midIdx = Math.floor(coords.length / 2);
-      const midLat = coords[midIdx][0];
-      const midLon = coords[midIdx][1];
-
-      const riskSeverity: Record<FloodRisk, number> = {
-        extreme: 5, high: 4, moderate: 3, normal: 2, low: 1, unknown: 0,
-      };
-
-      let bestRisk: FloodRisk = 'unknown';
-      let bestDist = MAX_PROXIMITY_DEG;
-      let bestGaugeName: string | null = null;
-
-      for (const gauge of gaugesWithRisk) {
-        if (gauge.risk === 'unknown') continue;
-        const dist = degreeDistance(midLat, midLon, gauge.site.latitude, gauge.site.longitude);
-        if (dist < bestDist) {
-          bestDist = dist;
-          bestRisk = gauge.risk;
-          bestGaugeName = gauge.site.name;
-        } else if (dist < MAX_PROXIMITY_DEG && riskSeverity[gauge.risk] > riskSeverity[bestRisk]) {
-          // Within range and higher severity — use this one
-          bestRisk = gauge.risk;
-          bestGaugeName = gauge.site.name;
+      // Deduplicate: if multiple gauges project to the same coord index, keep the closest one
+      const byIndex = new Map<number, GaugeProjection>();
+      for (const proj of projections) {
+        const existing = byIndex.get(proj.coordIndex);
+        if (!existing || proj.distance < existing.distance) {
+          byIndex.set(proj.coordIndex, proj);
         }
       }
 
-      return { risk: bestRisk, gaugeName: bestGaugeName };
-    };
-  }, [waterwayRiskMap, gaugesWithRisk, enabled]);
+      // Sort projections by their position along the polyline
+      const sortedProjections = Array.from(byIndex.values())
+        .sort((a, b) => a.coordIndex - b.coordIndex);
+
+      // Split the polyline into segments between gauges
+      // Each gauge "owns" the river from the midpoint-to-prev-gauge to midpoint-to-next-gauge
+      const segments: WaterwaySegment[] = [];
+
+      for (let i = 0; i < sortedProjections.length; i++) {
+        const proj = sortedProjections[i];
+
+        // Determine the start of this gauge's segment
+        let startIdx: number;
+        if (i === 0) {
+          startIdx = 0;
+        } else {
+          // Midpoint between previous gauge and this gauge
+          startIdx = Math.floor((sortedProjections[i - 1].coordIndex + proj.coordIndex) / 2);
+        }
+
+        // Determine the end of this gauge's segment
+        let endIdx: number;
+        if (i === sortedProjections.length - 1) {
+          endIdx = coords.length - 1;
+        } else {
+          // Midpoint between this gauge and next gauge
+          endIdx = Math.floor((proj.coordIndex + sortedProjections[i + 1].coordIndex) / 2);
+        }
+
+        // Extract the segment coordinates (inclusive of both endpoints)
+        if (endIdx > startIdx) {
+          segments.push({
+            coords: coords.slice(startIdx, endIdx + 1),
+            risk: proj.gauge.risk,
+            gaugeName: proj.gauge.site.name,
+          });
+        }
+      }
+
+      if (segments.length > 0) {
+        segmentMap.set(waterway.id, segments);
+      }
+    }
+
+    return segmentMap;
+  }, [waterways, gaugesWithRisk, enabled]);
 
   // Filter out invalid coordinates
   const validWaterways = waterways.filter(
@@ -230,25 +282,48 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({ water
 
         if (coords.length <= 1) return null;
 
-        const { risk, gaugeName } = getWaterwayRisk(waterway);
-        const isFloodColored = enabled && risk !== 'unknown';
+        // Check if we have per-segment flood coloring for this waterway
+        const segments = enabled ? waterwaySegments.get(waterway.id) : undefined;
 
-        const color = isFloodColored ? FLOOD_COLORS[risk] : DEFAULT_COLOR;
-        const weight = isFloodColored ? FLOOD_WEIGHTS[risk] : DEFAULT_WEIGHT;
-        const opacity = isFloodColored ? FLOOD_OPACITY[risk] : DEFAULT_OPACITY;
+        if (segments && segments.length > 0) {
+          // Render each segment with its own flood color
+          return (
+            <React.Fragment key={waterway.id}>
+              {segments.map((segment, idx) => {
+                if (segment.coords.length <= 1) return null;
+                const color = FLOOD_COLORS[segment.risk];
+                const weight = FLOOD_WEIGHTS[segment.risk];
+                const opacity = FLOOD_OPACITY[segment.risk];
+                const label = FLOOD_LABELS[segment.risk];
+                const tooltipText = label
+                  ? `${waterway.name} — ${label}${segment.gaugeName ? ` (${segment.gaugeName})` : ''}`
+                  : waterway.name || waterway.type;
 
-        const tooltipText = isFloodColored && FLOOD_LABELS[risk]
-          ? `${waterway.name} — ${FLOOD_LABELS[risk]}${gaugeName ? ` (${gaugeName})` : ''}`
-          : waterway.name || waterway.type;
+                return (
+                  <Polyline
+                    key={`${waterway.id}-seg-${idx}`}
+                    positions={segment.coords}
+                    pathOptions={{ color, weight, opacity }}
+                  >
+                    <Tooltip>
+                      <span>{tooltipText}</span>
+                    </Tooltip>
+                  </Polyline>
+                );
+              })}
+            </React.Fragment>
+          );
+        }
 
+        // No matching gauges — render with default styling
         return (
           <Polyline
             key={waterway.id}
             positions={coords}
-            pathOptions={{ color, weight, opacity }}
+            pathOptions={{ color: DEFAULT_COLOR, weight: DEFAULT_WEIGHT, opacity: DEFAULT_OPACITY }}
           >
             <Tooltip>
-              <span>{tooltipText}</span>
+              <span>{waterway.name || waterway.type}</span>
             </Tooltip>
           </Polyline>
         );
