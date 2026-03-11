@@ -1,5 +1,10 @@
 import { NextRequest } from 'next/server';
+import { timingSafeEqual } from 'crypto';
 
+/**
+ * Authenticate admin requests via HTTP Basic Auth.
+ * Uses constant-time comparison to prevent timing attacks.
+ */
 export function authenticate(request: NextRequest): boolean {
   const authHeader = request.headers.get('authorization');
   if (!authHeader || !authHeader.startsWith('Basic ')) {
@@ -14,38 +19,47 @@ export function authenticate(request: NextRequest): boolean {
     const adminUsername = process.env.ADMIN_USERNAME;
     const adminPassword = process.env.ADMIN_PASSWORD;
 
-    if (!adminPassword) return false;
+    if (!adminUsername || !adminPassword) return false;
 
-    return username === adminUsername && password === adminPassword;
+    const usernameMatch = safeCompare(username, adminUsername);
+    const passwordMatch = safeCompare(password, adminPassword);
+
+    return usernameMatch && passwordMatch;
   } catch (error) {
     console.error('Authentication error (lib/auth):', error);
     return false;
   }
 }
 
+/**
+ * Validate preload requests using a shared secret.
+ * The preload service must send the secret in the X-Preload-Secret header.
+ * This replaces the previous header-spoofable localhost check.
+ */
 export function isPreloadRequest(request: NextRequest): boolean {
-  const userAgent = request.headers.get('user-agent') || '';
-  const host = request.headers.get('host') || '';
-  const xForwardedFor = request.headers.get('x-forwarded-for') || '';
+  const secret = process.env.PRELOAD_SECRET;
+  if (!secret) return false;
 
-  const isLocalOrInternal = host.includes('localhost') ||
-    host.includes('127.0.0.1') ||
-    host.includes('app:') ||
-    xForwardedFor.includes('172.') ||
-    xForwardedFor.includes('192.168.') ||
-    xForwardedFor.includes('10.');
+  const providedSecret = request.headers.get('x-preload-secret');
+  if (!providedSecret) return false;
 
-  return isLocalOrInternal && userAgent.includes('node');
+  return safeCompare(providedSecret, secret);
 }
 
-export function isFormBasedRequest(request: NextRequest): boolean {
-  const userAgent = request.headers.get('user-agent') || '';
-  const referer = request.headers.get('referer') || '';
-  const origin = request.headers.get('origin') || '';
-
-  return userAgent.includes('Mozilla') && (
-    referer.includes('/admin/') ||
-    origin.includes('localhost') ||
-    referer.includes('admin')
-  );
+/**
+ * Constant-time string comparison to prevent timing attacks.
+ */
+function safeCompare(a: string, b: string): boolean {
+  try {
+    const bufA = Buffer.from(a);
+    const bufB = Buffer.from(b);
+    if (bufA.length !== bufB.length) {
+      // Compare against itself to maintain constant time
+      timingSafeEqual(bufA, bufA);
+      return false;
+    }
+    return timingSafeEqual(bufA, bufB);
+  } catch {
+    return false;
+  }
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
 import { authenticate, isPreloadRequest } from '@/lib/auth';
+import { logger } from '@/lib/logger';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
@@ -42,18 +43,12 @@ export async function GET() {
         stats.memoryUsage = memoryMatch[1].trim();
       }
     } catch (error) {
-      console.warn('Could not get Redis memory info:', error);
+      logger.warn('Could not get Redis memory info:', error);
     }
 
-    return NextResponse.json(stats, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, DELETE',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
+    return NextResponse.json(stats);
   } catch (error) {
-    console.error('Cache stats API error:', error);
+    logger.error('Cache stats API error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch cache statistics' },
       { status: 500 }
@@ -114,22 +109,16 @@ export async function DELETE(request: NextRequest) {
 
     if (keysToDelete.length > 0) {
       await client.del(keysToDelete);
-      console.log(`Deleted ${keysToDelete.length} keys for cache type: ${cacheType}`);
+      logger.debug(`Deleted ${keysToDelete.length} keys for cache type: ${cacheType}`);
     }
 
     return NextResponse.json({
       success: true,
       deletedKeys: keysToDelete.length,
       cacheType
-    }, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET, DELETE',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
     });
   } catch (error) {
-    console.error('Cache delete API error:', error);
+    logger.error('Cache delete API error:', error);
     return NextResponse.json(
       { error: 'Failed to clear cache' },
       { status: 500 }

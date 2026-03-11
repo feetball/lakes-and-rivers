@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
 import { cacheSet } from '@/lib/redis';
-import { authenticate, isPreloadRequest, isFormBasedRequest } from '@/lib/auth';
+import { authenticate, isPreloadRequest } from '@/lib/auth';
 import { isSafeJson, validateAdminAction } from '@/lib/security';
 
 // In-memory cache hit/miss counters (reset on server restart)
@@ -44,29 +44,15 @@ export const dynamic = 'force-dynamic';
 
 // Use shared helpers from lib/auth
 
-// GET - Show cache admin interface (for browser access)
+// GET - Show cache admin interface
 export async function GET(request: NextRequest) {
   if (!authenticate(request) && !isPreloadRequest(request)) {
-    // For form-based requests, don't send WWW-Authenticate header to avoid browser dialog
-    if (isFormBasedRequest(request)) {
-      return new NextResponse(JSON.stringify({
-        error: 'Authentication required',
-        message: 'Please provide valid credentials'
-      }), {
-        status: 401,
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-    } else {
-      // For traditional Basic Auth requests (like curl), send WWW-Authenticate header
-      return new NextResponse('Unauthorized', {
-        status: 401,
-        headers: {
-          'WWW-Authenticate': 'Basic realm="Cache Admin"',
-        },
-      });
-    }
+    return new NextResponse('Unauthorized', {
+      status: 401,
+      headers: {
+        'WWW-Authenticate': 'Basic realm="Cache Admin"',
+      },
+    });
   }
 
   try {
@@ -116,10 +102,11 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error) {
+    console.error('Cache admin GET error:', error);
     return NextResponse.json(
       {
         status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Internal server error'
       },
       { status: 500 }
     );
@@ -128,24 +115,11 @@ export async function GET(request: NextRequest) {
 
 // POST - Perform cache operations
 export async function POST(request: NextRequest) {
-  // Allow preload requests from localhost, otherwise require authentication
   if (!authenticate(request) && !isPreloadRequest(request)) {
-    // For form-based requests, don't send WWW-Authenticate header to avoid browser dialog
-    if (isFormBasedRequest(request)) {
-      return NextResponse.json(
-        { 
-          error: 'Authentication required',
-          message: 'Please provide valid credentials'
-        },
-        { status: 401 }
-      );
-    } else {
-      // For traditional requests, we can still use the standard response
-      return NextResponse.json(
-        { error: 'Authentication required' },
-        { status: 401 }
-      );
-    }
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
   }
 
   try {
@@ -261,7 +235,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         status: 'error',
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Internal server error'
       },
       { status: 500 }
     );

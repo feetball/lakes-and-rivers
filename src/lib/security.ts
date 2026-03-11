@@ -37,3 +37,18 @@ export function validateAdminAction(action: any, allowed: string[]) {
   if (typeof action !== 'string') return false;
   return allowed.includes(action);
 }
+
+/** USGS site IDs are 8-15 digit numbers */
+export function validateSiteId(id: string): boolean {
+  return /^\d{8,15}$/.test(id);
+}
+
+/** Hours must be a positive integer between 1 and 168 (1 week) */
+export function validateHours(hours: number): boolean {
+  return Number.isInteger(hours) && hours >= 1 && hours <= 168;
+}
+
+/** USGS parameter codes are 5-digit numbers */
+export function validateParameterCode(code: string): boolean {
+  return /^\d{5}$/.test(code);
+}

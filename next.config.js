@@ -3,14 +3,13 @@ const nextConfig = {
   // Enable standalone output for Docker builds
   output: 'standalone',
   
-  // Minimal config to avoid hydration issues
   typescript: {
-    ignoreBuildErrors: true,
+    ignoreBuildErrors: false,
   },
   eslint: {
-    ignoreDuringBuilds: true,
+    ignoreDuringBuilds: false,
   },
-  reactStrictMode: false, // Disable React Strict Mode which can cause hydration issues
+  reactStrictMode: true,
   
   // Enable compression for better performance
   compress: true,

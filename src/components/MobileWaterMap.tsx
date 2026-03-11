@@ -3,8 +3,9 @@
 import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { WaterSite } from '@/types/water';
-import { USGSService } from '@/services/usgs';
-import { WaterwayService, Waterway } from '@/services/waterways';
+import { Waterway } from '@/services/waterways';
+import { useWaterData } from '@/hooks/useWaterData';
+import { TEXAS_BBOX } from '@/constants/texas';
 
 // Dynamically import MapView to avoid SSR issues
 const DynamicMap = dynamic(() => import('../components/MapView'), {
@@ -25,10 +26,13 @@ const DynamicMap = dynamic(() => import('../components/MapView'), {
 }>;
 
 export default function MobileWaterMap() {
-  const [sites, setSites] = useState<WaterSite[]>([]);
-  const [waterways, setWaterways] = useState<Waterway[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    sites,
+    waterways,
+    loading,
+    error,
+    loadAll,
+  } = useWaterData();
   const [globalTrendHours, setGlobalTrendHours] = useState(24);
   const [isMobile, setIsMobile] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
@@ -38,59 +42,24 @@ export default function MobileWaterMap() {
     const checkMobile = () => {
       setIsMobile(window.innerWidth < 768);
     };
-    
+
     checkMobile();
     window.addEventListener('resize', checkMobile);
-    
+
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
+  // Load data on mount and when trend hours change
   useEffect(() => {
-    loadWaterSites();
-    loadWaterways();
-  }, [globalTrendHours]);
-
-  const loadWaterways = async () => {
-    try {
-      const bbox = {
-        north: 36.5,    // Full Texas north boundary
-        south: 25.8,    // Full Texas south boundary  
-        east: -93.5,    // Full Texas east boundary
-        west: -106.7    // Full Texas west boundary
-      };
-      
-      const waterwayData = await WaterwayService.getWaterways(bbox);
-      setWaterways(waterwayData);
-    } catch (error) {
-      console.error('Failed to load waterways:', error);
-    }
-  };
-
-  const loadWaterSites = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Use full Texas bounding box instead of just Austin area
-      const bbox = {
-        north: 36.5,    // Full Texas north boundary
-        south: 25.8,    // Full Texas south boundary  
-        east: -93.5,    // Full Texas east boundary
-        west: -106.7    // Full Texas west boundary
-      };
-      
-      const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);
-      setSites(waterSites);
-    } catch (error) {
-      console.error('Failed to load water sites:', error);
-      setError('Failed to load water level data. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    loadAll(TEXAS_BBOX, globalTrendHours);
+  }, [globalTrendHours, loadAll]);
 
   const handleTrendHoursChange = (hours: number) => {
     setGlobalTrendHours(hours);
+  };
+
+  const handleRefresh = () => {
+    loadAll(TEXAS_BBOX, globalTrendHours);
   };
 
   if (loading) {
@@ -111,7 +80,7 @@ export default function MobileWaterMap() {
         <div className="text-center p-4">
           <p className="text-lg text-red-700 mb-4">{error}</p>
           <button 
-            onClick={loadWaterSites}
+            onClick={handleRefresh}
             className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Retry
@@ -147,7 +116,7 @@ export default function MobileWaterMap() {
                   {sites.length} monitoring sites
                 </div>
                 <button 
-                  onClick={loadWaterSites}
+                  onClick={handleRefresh}
                   className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
                 >
                   Refresh Data
@@ -183,7 +152,7 @@ export default function MobileWaterMap() {
                     </div>
                     
                     <button 
-                      onClick={loadWaterSites}
+                      onClick={handleRefresh}
                       className="w-full px-3 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
                     >
                       Refresh Data

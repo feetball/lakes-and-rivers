@@ -1,18 +1,20 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import L from 'leaflet';
 import { WaterSite } from '@/types/water';
 import { Waterway } from '@/services/waterways';
-import WaterLevelChart from './WaterLevelChart';
+import { createCustomIcon } from '@/lib/floodRisk';
+import SiteTooltipContent from './map/SiteTooltip';
+import SitePopupContent from './map/SitePopup';
+import MapControls from './map/MapControls';
 import MapChartOverlay from './MapChartOverlay';
 import WaterwayLayer from './WaterwayLayer';
 import FloodAwareWaterwayLayer from './FloodAwareWaterwayLayer';
 import FloodPredictionPanel from './FloodPredictionPanel';
-import DraggableBox from './DraggableBox';
 
 // Import Leaflet CSS only on client side when component loads
 import 'leaflet/dist/leaflet.css';
@@ -188,64 +190,6 @@ const MapOverlayHandler: React.FC<{ sites: WaterSite[]; globalTrendHours: number
     document.body
   );
 };
-
-// Unified flood risk assessment function (matches FloodAwareWaterwayLayer)
-const determineFloodRisk = (site: WaterSite): 'extreme' | 'high' | 'moderate' | 'normal' | 'low' | 'unknown' => {
-  if (!site.gageHeight) return 'unknown';
-  
-  // Enhanced flood risk assessment using flood stage data
-  const { gageHeight, floodStage, streamflow } = site;
-  
-  // If we have flood stage data, use it for more accurate assessment (PRIORITY)
-  if (floodStage && gageHeight) {
-    const floodRatio = gageHeight / floodStage;
-    if (floodRatio >= 1.2) return 'extreme';  // 20% above flood stage
-    if (floodRatio >= 1.0) return 'high';     // At or above flood stage
-    if (floodRatio >= 0.8) return 'moderate'; // Approaching flood stage
-    if (floodRatio >= 0.5) return 'normal';   // Normal levels
-    return 'low';                             // Below normal
-  }
-  
-  // Fallback to basic status with streamflow consideration if no flood stage
-  const waterLevelStatus = site.waterLevelStatus;
-  if (waterLevelStatus === 'high') {
-    // Consider streamflow for more nuanced assessment
-    if (streamflow && streamflow > 1000) return 'extreme';
-    if (streamflow && streamflow > 500) return 'high';
-    return 'moderate';
-  }
-  
-  if (waterLevelStatus === 'normal') return 'normal';
-  if (waterLevelStatus === 'low') return 'low';
-  return 'unknown';
-};
-
-const createCustomIcon = (site: WaterSite) => {
-  const floodRisk = determineFloodRisk(site);
-  
-  const colors = {
-    extreme: '#dc2626', // Bright red
-    high: '#ea580c',    // Red-orange
-    moderate: '#d97706', // Orange
-    normal: '#16a34a',   // Green
-    low: '#0891b2',      // Teal (low water)
-    unknown: '#6b7280'   // Gray
-  };
-
-  const color = colors[floodRisk];
-  
-  // Use different icon shapes for different site types
-  const isLakeOrReservoir = site.siteType === 'lake' || site.siteType === 'reservoir';
-  const iconShape = isLakeOrReservoir ? 'border-radius: 20%;' : 'border-radius: 50%;';
-
-  return L.divIcon({
-    className: 'custom-marker',
-    html: `<div style="background-color: ${color}; width: 20px; height: 20px; ${iconShape} border: 3px solid white; box-shadow: 0 2px 6px rgba(0,0,0,0.4); cursor: pointer;"></div>`,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
-  });
-};
-
 
 const MapView: React.FC<MapViewProps> = ({ 
   sites: initialSites, 
@@ -455,189 +399,28 @@ const MapView: React.FC<MapViewProps> = ({
     }
   }, [gaugeSitesVisible, onVisibilityStatsChange, sites.length, visibleSites.length]);
 
-  // Utility functions (unchanged)
-  const formatLastUpdated = (dateString?: string) => {
-    if (!dateString) return 'Unknown';
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleString();
-    } catch {
-      return 'Unknown';
-    }
-  };
-  const formatWaterLevel = (level?: number, unit: string = 'ft') => {
-    if (level === undefined) return 'No data';
-    return `${level.toFixed(2)} ${unit}`;
-  };
-  const getChartColor = (site: WaterSite) => {
-    const floodRisk = determineFloodRisk(site);
-    const colors = {
-      extreme: '#dc2626', // Bright red
-      high: '#ea580c',    // Red-orange
-      moderate: '#d97706', // Orange
-      normal: '#16a34a',   // Green
-      low: '#0891b2',      // Teal (low water)
-      unknown: '#6b7280'   // Gray
-    };
-    return colors[floodRisk];
-  };
-  
-  const getFloodRiskDisplay = (site: WaterSite) => {
-    const floodRisk = determineFloodRisk(site);
-    const labels = {
-      extreme: 'EXTREME RISK',
-      high: 'HIGH RISK',
-      moderate: 'MODERATE RISK',
-      normal: 'NORMAL',
-      low: 'LOW WATER',
-      unknown: 'UNKNOWN'
-    };
-    const bgColors = {
-      extreme: 'bg-red-600',
-      high: 'bg-orange-600', 
-      moderate: 'bg-yellow-600',
-      normal: 'bg-green-600',
-      low: 'bg-blue-600',
-      unknown: 'bg-gray-600'
-    };
-    return {
-      label: labels[floodRisk],
-      bgColor: bgColors[floodRisk],
-      risk: floodRisk
-    };
-  };
-
-  // Debug overlay: show count and types of waterways
-  const waterwayTypeCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-    waterways.forEach(w => {
-      counts[w.type] = (counts[w.type] || 0) + 1;
-    });
-    return counts;
-  }, [waterways]);
-
   return (
     <div className="relative h-full w-full">
-      {/* DEBUG: Waterway counts overlay */}
-      <div style={{position: 'absolute', top: 8, left: 8, zIndex: 2000, background: 'rgba(255,255,255,0.85)', padding: '8px 12px', borderRadius: '8px', fontSize: '13px', boxShadow: '0 2px 8px rgba(0,0,0,0.08)'}}>
-        <div><strong>Waterways Rendered:</strong> {waterways.length}</div>
-        {Object.entries(waterwayTypeCounts).map(([type, count]) => (
-          <div key={type}>{`${type.charAt(0).toUpperCase() + type.slice(1)}: ${String(count)}`}</div>
-        ))}
-      </div>
       {/* Chart Time Range and Controls - Now Draggable */}
       {chartControlsVisible && (
-        <DraggableBox
-          id="chart-controls"
-          title="Chart Time Range & Controls"
-          initialPosition={controlsPosition}
+        <MapControls
+          controlsPosition={controlsPosition}
           onClose={() => onChartControlsVisibilityChange?.(false)}
-        >
-          <div className="space-y-3">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Chart Time Range
-              </label>
-              <select
-                className="border rounded px-2 py-1 text-sm bg-white text-gray-700 w-full"
-                value={globalTrendHours}
-                onChange={e => onTrendHoursChange(Number(e.target.value))}
-              >
-                <option value={1}>1 hour</option>
-                <option value={8}>8 hours</option>
-                <option value={24}>24 hours</option>
-                <option value={48}>48 hours</option>
-              </select>
-            </div>
-            
-            <div>
-              <label className="flex items-center space-x-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={gaugeSitesVisible}
-                  onChange={e => setGaugeSitesVisible(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-gray-700">Show Gauge Sites</span>
-              </label>
-            </div>
-            
-            <div>
-              <label className="flex items-center space-x-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={chartsVisible}
-                  onChange={e => setChartsVisible(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-gray-700">Show Charts & Arrows</span>
-              </label>
-            </div>
-            
-            <div>
-              <label className="flex items-center space-x-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={waterwaysVisible}
-                  onChange={e => setWaterwaysVisible(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-gray-700">Show Rivers & Lakes</span>
-              </label>
-            </div>
-            
-            <div>
-              <label className="flex items-center space-x-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={floodAwarenessEnabled}
-                  onChange={e => setFloodAwarenessEnabled(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-gray-700">🌊 Flood Awareness Mode</span>
-              </label>
-            </div>
-            
-            {isLocalNetwork && (
-              <div className="pt-2 border-t border-gray-200 space-y-2">
-                <div className="text-sm font-medium text-gray-700">Cache Management</div>
-                
-                {!cacheStats ? (
-                  <button
-                    onClick={fetchCacheStats}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white px-3 py-2 rounded text-sm"
-                  >
-                    📊 Load Cache Stats
-                  </button>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="bg-gray-50 p-2 rounded text-sm">
-                      <div className="font-medium">Total Keys: {cacheStats.totalKeys}</div>
-                      <div className="text-xs text-gray-600 mt-1">
-                        USGS: {cacheStats.usgsData} • Historical: {cacheStats.historicalData}
-                      </div>
-                    </div>
-                    
-                    <div className="flex gap-2">
-                      <button
-                        onClick={fetchCacheStats}
-                        className="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 rounded text-xs"
-                      >
-                        Refresh
-                      </button>
-                      <button
-                        onClick={clearAllCache}
-                        className="flex-1 bg-red-600 hover:bg-red-700 text-white px-2 py-1 rounded text-xs"
-                      >
-                        Clear All
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </DraggableBox>
+          globalTrendHours={globalTrendHours}
+          onTrendHoursChange={onTrendHoursChange}
+          gaugeSitesVisible={gaugeSitesVisible}
+          onGaugeSitesVisibleChange={setGaugeSitesVisible}
+          chartsVisible={chartsVisible}
+          onChartsVisibleChange={setChartsVisible}
+          waterwaysVisible={waterwaysVisible}
+          onWaterwaysVisibleChange={setWaterwaysVisible}
+          floodAwarenessEnabled={floodAwarenessEnabled}
+          onFloodAwarenessChange={setFloodAwarenessEnabled}
+          isLocalNetwork={isLocalNetwork}
+          cacheStats={cacheStats}
+          onFetchCacheStats={fetchCacheStats}
+          onClearAllCache={clearAllCache}
+        />
       )}
       
       <MapContainer
@@ -676,182 +459,18 @@ const MapView: React.FC<MapViewProps> = ({
             position={[site.latitude, site.longitude]}
             icon={createCustomIcon(site)}
           >
-            <Tooltip 
-              direction="top" 
-              offset={[0, -20]} 
-              opacity={0.9} 
+            <Tooltip
+              direction="top"
+              offset={[0, -20]}
+              opacity={0.9}
               className="custom-tooltip"
               permanent={false}
               sticky={false}
             >
-              <div className="p-2 max-w-xs" style={{width: '280px', maxWidth: '95vw', fontSize: '13px'}}>
-                <h3 className="font-bold text-base md:text-lg mb-2 break-words whitespace-normal">{site.name}</h3>
-                <div className="space-y-1 text-xs">
-                  <div>
-                    <strong>Site ID:</strong> {site.id}
-                  </div>
-                  <div>
-                    <strong>Type:</strong> {site.siteType ? site.siteType.charAt(0).toUpperCase() + site.siteType.slice(1) : 'River'} Gauge
-                  </div>
-                  <div>
-                    <strong>Status:</strong>{' '}
-                    <span
-                      className={`inline-block px-1 py-0.5 rounded text-xs text-white ${getFloodRiskDisplay(site).bgColor}`}
-                    >
-                      {getFloodRiskDisplay(site).label}
-                    </span>
-                  </div>
-                  {site.gageHeight && (
-                    <div>
-                      <strong>Gage Height:</strong> {formatWaterLevel(site.gageHeight)}
-                    </div>
-                  )}
-                  {site.lakeElevation && (
-                    <div>
-                      <strong>Lake Elevation:</strong> {formatWaterLevel(site.lakeElevation)}
-                    </div>
-                  )}
-                  {site.reservoirStorage && (
-                    <div>
-                      <strong>Storage:</strong> {formatWaterLevel(site.reservoirStorage, 'acre-ft')}
-                    </div>
-                  )}
-                  {site.floodStage && (
-                    <div>
-                      <strong>Flood Stage:</strong> {formatWaterLevel(site.floodStage)}
-                      {site.gageHeight && site.floodStage && (
-                        <span className="text-xs ml-1">
-                          ({((site.gageHeight / site.floodStage) * 100).toFixed(0)}% of flood stage)
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {site.streamflow && (
-                    <div>
-                      <strong>Streamflow:</strong> {formatWaterLevel(site.streamflow, 'cfs')}
-                    </div>
-                  )}
-                  {site.waterLevelStatus && (
-                    <div className="text-xs text-gray-600">
-                      <strong>USGS Status:</strong> {site.waterLevelStatus.toUpperCase()}
-                    </div>
-                  )}
-                  <div>
-                    <strong>Coordinates:</strong> {site.latitude.toFixed(4)}, {site.longitude.toFixed(4)}
-                  </div>
-                  <div>
-                    <strong>Last Updated:</strong> {formatLastUpdated(site.lastUpdated)}
-                  </div>
-                </div>
-                {site.chartData && site.chartData.length > 0 && (
-                  <div className="mt-2 pt-2 border-t border-gray-200">
-                    <div className="text-xs font-semibold text-gray-600 mb-1">
-                      <span className="break-words whitespace-normal">Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level (Chart data: {site.chartData.length} points)</span>
-                    </div>
-                    <div className="w-full overflow-hidden" style={{maxWidth: '100%'}}>
-                      <WaterLevelChart 
-                        data={site.chartData} 
-                        color={getChartColor(site)}
-                        height={96}
-                        forTooltip={true}
-                      />
-                    </div>
-                  </div>
-                )}
-                <div className="mt-2 pt-1 border-t border-gray-200 text-xs">
-                  <span className="text-blue-600">
-                    Click for detailed view • View on USGS
-                  </span>
-                </div>
-              </div>
+              <SiteTooltipContent site={site} globalTrendHours={globalTrendHours} />
             </Tooltip>
             <Popup className="custom-popup">
-              <div className="p-3 max-w-none">
-                <h3 className="font-bold text-lg mb-3 break-words">{site.name}</h3>
-                
-                {/* Single column layout for better content flow */}
-                <div className="space-y-2 text-sm mb-3">
-                  <div>
-                    <strong>Site ID:</strong> {site.id}
-                  </div>
-                  <div>
-                    <strong>Type:</strong> {site.siteType ? site.siteType.charAt(0).toUpperCase() + site.siteType.slice(1) : 'River'} Gauge
-                  </div>
-                  <div>
-                    <strong>Status:</strong>{' '}
-                    <span
-                      className={`inline-block px-2 py-1 rounded text-xs text-white ${getFloodRiskDisplay(site).bgColor}`}
-                    >
-                      {getFloodRiskDisplay(site).label}
-                    </span>
-                  </div>
-                  {site.gageHeight && (
-                    <div>
-                      <strong>Gage Height:</strong> {formatWaterLevel(site.gageHeight)}
-                    </div>
-                  )}
-                  {site.lakeElevation && (
-                    <div>
-                      <strong>Lake Elevation:</strong> {formatWaterLevel(site.lakeElevation)}
-                    </div>
-                  )}
-                  {site.reservoirStorage && (
-                    <div>
-                      <strong>Storage:</strong> {formatWaterLevel(site.reservoirStorage, 'acre-ft')}
-                    </div>
-                  )}
-                  {site.floodStage && (
-                    <div>
-                      <strong>Flood Stage:</strong> {formatWaterLevel(site.floodStage)}
-                      {site.gageHeight && site.floodStage && (
-                        <span className="text-xs ml-1 block">
-                          ({((site.gageHeight / site.floodStage) * 100).toFixed(0)}% of flood stage)
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {site.streamflow && (
-                    <div>
-                      <strong>Streamflow:</strong> {formatWaterLevel(site.streamflow, 'cfs')}
-                    </div>
-                  )}
-                  <div>
-                    <strong>Coordinates:</strong> {site.latitude.toFixed(4)}, {site.longitude.toFixed(4)}
-                  </div>
-                  <div>
-                    <strong>Last Updated:</strong> {formatLastUpdated(site.lastUpdated)}
-                  </div>
-                  {site.waterLevelStatus && (
-                    <div className="text-xs text-gray-600">
-                      <strong>USGS Status:</strong> {site.waterLevelStatus.toUpperCase()}
-                    </div>
-                  )}
-                </div>
-                
-                {site.chartData && site.chartData.length > 0 && (
-                  <div className="pt-2 border-t border-gray-200">
-                    <div className="text-xs font-semibold text-gray-600 mb-2">
-                      <span className="break-words whitespace-normal">Last {globalTrendHours} Hour{globalTrendHours !== 1 ? 's' : ''} Water Level ({site.chartData.length} points)</span>
-                    </div>
-                    <WaterLevelChart 
-                      data={site.chartData} 
-                      color={getChartColor(site)}
-                      showTooltip={true}
-                      height={100}
-                    />
-                  </div>
-                )}
-                <div className="mt-2 pt-2 border-t border-gray-200">
-                  <a
-                    href={`https://waterdata.usgs.gov/monitoring-location/${site.id}/`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 text-sm"
-                  >
-                    View on USGS →
-                  </a>
-                </div>
-              </div>
+              <SitePopupContent site={site} globalTrendHours={globalTrendHours} />
             </Popup>
           </Marker>
         ))}

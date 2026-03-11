@@ -64,7 +64,7 @@ const VisibleChart: React.FC<VisibleChartProps> = ({
               <div className="text-xs font-bold mb-1 text-blue-600">
                 {title} ({data.length} points)
               </div>
-              <div style={{ width: '100%', height: `${height - 30}px` }}>
+              <div style={{ width: '100%', height: `${(height ?? 100) - 30}px` }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={chartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />

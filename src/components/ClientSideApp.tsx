@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import dynamic from 'next/dynamic';
+import ErrorBoundary from '@/components/ErrorBoundary';
 
 // Force these components to be client-side only
 const WaterMap = dynamic(() => import('@/components/WaterMap'), {
@@ -33,7 +34,6 @@ export default function ClientSideApp() {
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
-    console.log('✅ ClientSideApp mounted successfully!');
     setMounted(true);
     
     // Set initial width
@@ -63,8 +63,10 @@ export default function ClientSideApp() {
     );
   }
 
-  console.log('✅ Rendering water map, mobile:', isMobile);
-  
   // Render the appropriate component based on screen size
-  return isMobile ? <MobileWaterMap /> : <WaterMap />;
+  return (
+    <ErrorBoundary>
+      {isMobile ? <MobileWaterMap /> : <WaterMap />}
+    </ErrorBoundary>
+  );
 }

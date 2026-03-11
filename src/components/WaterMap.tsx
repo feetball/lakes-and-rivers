@@ -1,10 +1,11 @@
 'use client';
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import dynamic from 'next/dynamic';
 import { WaterSite } from '@/types/water';
-import { USGSService } from '@/services/usgs';
-import { WaterwayService, Waterway } from '@/services/waterways';
+import { Waterway } from '@/services/waterways';
+import { useWaterData, BBox } from '@/hooks/useWaterData';
+import { TEXAS_BBOX } from '@/constants/texas';
 import CacheManager from './CacheManager';
 import DraggableBox from './DraggableBox';
 
@@ -34,10 +35,16 @@ const DynamicMap = dynamic(() => import('../components/MapView'), {
 }>;
 
 export default function WaterMap() {
-  const [sites, setSites] = useState<WaterSite[]>([]);
-  const [waterways, setWaterways] = useState<Waterway[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const {
+    sites,
+    waterways,
+    loading,
+    error,
+    loadSitesForBounds,
+    loadWaterwaysForBounds,
+    loadAll,
+    lastUpdated,
+  } = useWaterData();
   const [selectedState, setSelectedState] = useState('');
   const [globalTrendHours, setGlobalTrendHours] = useState(24);
   const [legendVisible, setLegendVisible] = useState(true);
@@ -45,16 +52,12 @@ export default function WaterMap() {
   const [floodPanelVisible, setFloodPanelVisible] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const [lastUpdated, setLastUpdated] = useState<{
-    usgs?: string;
-    floodStages?: string;
-  }>({});
   const [visibilityStats, setVisibilityStats] = useState({
     totalSites: 0,
     visibleSites: 0,
     gaugeSitesVisible: true
   });
-  const [currentViewBounds, setCurrentViewBounds] = useState<any>(null);
+  const [currentViewBounds, setCurrentViewBounds] = useState<BBox | null>(null);
 
   // Memoize the trend hours change handler to prevent unnecessary re-renders
   const handleTrendHoursChange = useCallback((hours: number) => {
@@ -80,6 +83,22 @@ export default function WaterMap() {
     };
   }, []);
 
+  // Close menu on Escape key
+  useEffect(() => {
+    if (!menuOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
+
   // Format timestamp for display
   const formatTimestamp = (timestamp?: string) => {
     if (!timestamp) return 'Never';
@@ -99,179 +118,64 @@ export default function WaterMap() {
   };
 
   // Load data when map bounds change significantly
-  const [lastLoadedBounds, setLastLoadedBounds] = useState<any>(null);
-  
-  // Load water sites for specific bounds
-  const loadWaterSitesForBounds = useCallback(async (bbox: any) => {
-    try {
-      setLoading(true);
-      setError(null);
-      
-      const currentTime = new Date().toISOString();
-      
-      console.log('Loading water sites for bounds:', bbox);
-      
-      const waterSites = await USGSService.getWaterSites(bbox, globalTrendHours);
-      
-      // Update USGS data timestamp
-      setLastUpdated(prev => ({ ...prev, usgs: currentTime }));
-      
-      // Filter and prioritize sites for better performance
-      const activeSites = waterSites
-        .filter(site => site.chartData && site.chartData.length > 0) // Only sites with chart data
-        .sort((a, b) => {
-          // Prioritize by last updated time (most recent first)
-          const aTime = a.lastUpdated ? new Date(a.lastUpdated).getTime() : 0;
-          const bTime = b.lastUpdated ? new Date(b.lastUpdated).getTime() : 0;
-          return bTime - aTime;
-        })
-        .slice(0, 200); // Limit for better performance
-      
-      setSites(activeSites);
-      console.log(`Loaded ${activeSites.length} active sites (from ${waterSites.length} total)`);
-      
-    } catch (err) {
-      console.error('Error loading water sites:', err);
-      setError('Failed to load water sites');
-    } finally {
-      setLoading(false);
-    }
-  }, [globalTrendHours]);
-
-  // Load waterways for specific bounds
-  const loadWaterwaysForBounds = useCallback(async (bbox: any) => {
-    try {
-      console.log('Loading waterways for bounds:', bbox);
-      
-      const waterwayData = await WaterwayService.getWaterways(bbox);
-      
-      // Debug what we're setting in state
-      console.log('[WaterMap DEBUG] About to setWaterways with:', {
-        length: waterwayData.length,
-        firstThree: waterwayData.slice(0, 3).map(w => ({
-          id: w.id,
-          name: w.name,
-          type: w.type,
-          coordinatesLength: w.coordinates?.length || 0,
-          firstCoord: w.coordinates?.[0]
-        }))
-      });
-      
-      setWaterways(waterwayData);
-      
-      console.log('Loaded waterways:', waterwayData.length);
-    } catch (err) {
-      console.error('Error loading waterways:', err);
-      // Don't set error state for waterways, just continue without them
-    }
-  }, []);
-
-  // Texas bounding box
-  const TEXAS_BOUNDS = {
-    north: 36.5,    // Full Texas north boundary
-    south: 25.8,    // Full Texas south boundary  
-    east: -93.5,    // Full Texas east boundary
-    west: -106.7    // Full Texas west boundary
-  };
-
-  // Function to check if bounds are within Texas
-  const isWithinTexas = useCallback((bounds: any) => {
-    return bounds.north <= TEXAS_BOUNDS.north && 
-           bounds.south >= TEXAS_BOUNDS.south &&
-           bounds.east <= TEXAS_BOUNDS.east && 
-           bounds.west >= TEXAS_BOUNDS.west;
-  }, []);
+  const [lastLoadedBounds, setLastLoadedBounds] = useState<BBox | null>(null);
 
   // Function to clamp bounds to Texas boundaries
-  const clampToTexas = useCallback((bounds: any) => {
+  const clampToTexas = useCallback((bounds: BBox): BBox => {
     return {
-      north: Math.min(bounds.north, TEXAS_BOUNDS.north),
-      south: Math.max(bounds.south, TEXAS_BOUNDS.south),
-      east: Math.min(bounds.east, TEXAS_BOUNDS.east),
-      west: Math.max(bounds.west, TEXAS_BOUNDS.west)
+      north: Math.min(bounds.north, TEXAS_BBOX.north),
+      south: Math.max(bounds.south, TEXAS_BBOX.south),
+      east: Math.min(bounds.east, TEXAS_BBOX.east),
+      west: Math.max(bounds.west, TEXAS_BBOX.west)
     };
   }, []);
 
   // Callback to handle map bounds changes - MUCH more responsive threshold
-  const handleMapBoundsChange = useCallback(async (bounds: any) => {
+  const handleMapBoundsChange = useCallback(async (bounds: BBox) => {
     console.log('Map bounds changed:', bounds);
-    
+
     // Clamp bounds to Texas only
     const texasBounds = clampToTexas(bounds);
     console.log('Clamped to Texas bounds:', texasBounds);
-    
+
     // Very small threshold for immediate response - 0.01 degrees ≈ 1km
-    if (!lastLoadedBounds || 
+    if (!lastLoadedBounds ||
         Math.abs(texasBounds.north - lastLoadedBounds.north) > 0.01 ||
         Math.abs(texasBounds.south - lastLoadedBounds.south) > 0.01 ||
         Math.abs(texasBounds.east - lastLoadedBounds.east) > 0.01 ||
         Math.abs(texasBounds.west - lastLoadedBounds.west) > 0.01) {
-      
+
       console.log('Loading new data for Texas bounds:', texasBounds);
       setLastLoadedBounds(texasBounds);
       setCurrentViewBounds(texasBounds);
-      
+
       // Load both gauge sites and waterways for the Texas area only
-      await Promise.all([
-        loadWaterSitesForBounds(texasBounds),
-        loadWaterwaysForBounds(texasBounds)
-      ]);
+      await loadAll(texasBounds, globalTrendHours, { maxSites: 200 });
     } else {
       console.log('Map movement too small, not loading new data');
     }
-  }, [lastLoadedBounds, loadWaterSitesForBounds, loadWaterwaysForBounds, clampToTexas]);
-  
+  }, [lastLoadedBounds, loadAll, clampToTexas, globalTrendHours]);
+
   // Initialize with full Texas on mount
   useEffect(() => {
-    console.log('Initial load for full Texas:', TEXAS_BOUNDS);
-    
-    // Load both water sites and waterways for initial area
-    Promise.all([
-      loadWaterSitesForBounds(TEXAS_BOUNDS),
-      loadWaterwaysForBounds(TEXAS_BOUNDS)
-    ]);
-    
-    setLastLoadedBounds(TEXAS_BOUNDS);
-    setCurrentViewBounds(TEXAS_BOUNDS);
-  }, [loadWaterSitesForBounds, loadWaterwaysForBounds]);
+    console.log('Initial load for full Texas:', TEXAS_BBOX);
+
+    loadAll(TEXAS_BBOX, globalTrendHours, { maxSites: 200 });
+
+    setLastLoadedBounds(TEXAS_BBOX);
+    setCurrentViewBounds(TEXAS_BBOX);
+  }, [loadAll, globalTrendHours]);
 
   // Update sites when trend hours change
   useEffect(() => {
     if (currentViewBounds) {
       const timeoutId = setTimeout(() => {
-        loadWaterSitesForBounds(currentViewBounds);
+        loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 200 });
       }, 300); // Debounce API calls by 300ms
 
       return () => clearTimeout(timeoutId);
     }
-  }, [globalTrendHours, currentViewBounds, loadWaterSitesForBounds]);
-
-  // Utility function to update water level status based on flood stages
-  const updateWaterLevelStatus = (site: WaterSite): WaterSite => {
-    if (!site.gageHeight || !site.floodStage) {
-      return site; // Can't determine flood status without both values
-    }
-    
-    const { gageHeight, floodStage, moderateFloodStage, majorFloodStage } = site;
-    let waterLevelStatus: 'high' | 'normal' | 'low' | 'unknown' = 'normal';
-    
-    // Determine status based on flood stage thresholds
-    if (majorFloodStage && gageHeight >= majorFloodStage) {
-      waterLevelStatus = 'high'; // Major flooding
-    } else if (moderateFloodStage && gageHeight >= moderateFloodStage) {
-      waterLevelStatus = 'high'; // Moderate flooding  
-    } else if (gageHeight >= floodStage) {
-      waterLevelStatus = 'high'; // Minor flooding
-    } else if (gageHeight >= floodStage * 0.8) {
-      waterLevelStatus = 'high'; // Approaching flood stage
-    } else if (gageHeight >= floodStage * 0.3) {
-      waterLevelStatus = 'normal'; // Normal range
-    } else {
-      waterLevelStatus = 'low'; // Below normal
-    }
-    
-    return { ...site, waterLevelStatus };
-  };
+  }, [globalTrendHours, currentViewBounds, loadSitesForBounds]);
 
   const handleStateChange = async (state: string) => {
     setSelectedState(state);
@@ -295,7 +199,7 @@ export default function WaterMap() {
         <div className="text-center">
           <p className="text-lg text-red-700">{error}</p>
           <button 
-            onClick={() => currentViewBounds && loadWaterSitesForBounds(currentViewBounds)}
+            onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 200 })}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Retry
@@ -421,8 +325,8 @@ export default function WaterMap() {
                 USGS: {formatTimestamp(lastUpdated.usgs)} • Flood Stages: {formatTimestamp(lastUpdated.floodStages)}
               </div>
             </div>
-            <button 
-              onClick={() => currentViewBounds && loadWaterSitesForBounds(currentViewBounds)}
+            <button
+              onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 200 })}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
             >
               Refresh

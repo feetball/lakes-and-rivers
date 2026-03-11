@@ -23,8 +23,12 @@ export async function railwayCacheClear() {
     try {
       console.log('[RAILWAY-CACHE] Clearing Redis cache...');
       
-      const adminUser = process.env.ADMIN_USERNAME || 'admin';
-      const adminPass = process.env.ADMIN_PASSWORD || 'CHANGE_ME_SECURE_PASSWORD_123';
+      const adminUser = process.env.ADMIN_USERNAME;
+      const adminPass = process.env.ADMIN_PASSWORD;
+      if (!adminUser || !adminPass) {
+        console.error('[RAILWAY-CACHE] ADMIN_USERNAME and ADMIN_PASSWORD must be set. Skipping cache clear.');
+        return;
+      }
       const auth = Buffer.from(`${adminUser}:${adminPass}`).toString('base64');
       
       const response = await fetch('http://localhost:3000/api/admin/cache', {

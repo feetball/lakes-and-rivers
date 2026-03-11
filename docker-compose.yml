@@ -25,8 +25,9 @@ services:
       REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-CHANGE_ME_SECURE_PASSWORD_123}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME must be set}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}
+      PRELOAD_SECRET: ${PRELOAD_SECRET:?PRELOAD_SECRET must be set}
       ALLOW_LIVE_USGS_FETCH: ${ALLOW_LIVE_USGS_FETCH:-true}
     ports:
       - "3000:3000"
@@ -48,8 +49,9 @@ services:
       REDIS_URL: redis://redis:6379
       REDIS_HOST: redis
       REDIS_PORT: 6379
-      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-CHANGE_ME_SECURE_PASSWORD_123}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:?ADMIN_USERNAME must be set}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?ADMIN_PASSWORD must be set}
+      PRELOAD_SECRET: ${PRELOAD_SECRET:?PRELOAD_SECRET must be set}
       ALLOW_LIVE_USGS_FETCH: ${ALLOW_LIVE_USGS_FETCH:-true}
     command: ["sh", "-c", "sleep 10 && ./wait-for-redis.sh node --max-old-space-size=4096 preload-data.js"]
 

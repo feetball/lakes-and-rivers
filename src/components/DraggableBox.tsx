@@ -49,27 +49,27 @@ const DraggableBox: React.FC<DraggableBoxProps> = ({
 
   const handleMouseDown = (e: React.MouseEvent) => {
     console.log('DraggableBox handleMouseDown called', { id, target: e.target, title });
-    
+
     // Only start dragging if clicking on the title bar or if no title
     const target = e.target as HTMLElement;
-    
+
     // Don't drag if user is interacting with form controls
     if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'BUTTON' || target.tagName === 'LABEL') {
       console.log('Click on form element, not dragging');
       return;
     }
-    
+
     // Don't drag if clicking inside form controls
     if (target.closest('input') || target.closest('select') || target.closest('button') || target.closest('label')) {
       console.log('Click inside form element, not dragging');
       return;
     }
-    
+
     if (title && !target.classList.contains('drag-handle') && !target.closest('.drag-handle')) {
       console.log('Click not on drag handle, returning');
       return;
     }
-    
+
     console.log('Starting drag for:', id);
     setIsDragging(true);
     setDragStart({
@@ -78,6 +78,28 @@ const DraggableBox: React.FC<DraggableBoxProps> = ({
     });
     e.preventDefault();
     e.stopPropagation();
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    const target = e.target as HTMLElement;
+
+    // Don't drag if user is interacting with form controls
+    if (target.tagName === 'INPUT' || target.tagName === 'SELECT' || target.tagName === 'BUTTON' || target.tagName === 'LABEL') {
+      return;
+    }
+    if (target.closest('input') || target.closest('select') || target.closest('button') || target.closest('label')) {
+      return;
+    }
+    if (title && !target.classList.contains('drag-handle') && !target.closest('.drag-handle')) {
+      return;
+    }
+
+    setIsDragging(true);
+    setDragStart({
+      x: touch.clientX - position.x,
+      y: touch.clientY - position.y,
+    });
   };
 
   const handleMouseMove = (e: MouseEvent) => {
@@ -109,17 +131,52 @@ const DraggableBox: React.FC<DraggableBoxProps> = ({
     }
   };
 
-  // Attach global mouse event listeners when dragging
+  const handleTouchMove = (e: TouchEvent) => {
+    if (!isDragging) return;
+    e.preventDefault(); // Prevent page scrolling
+    const touch = e.touches[0];
+
+    const newPosition = {
+      x: touch.clientX - dragStart.x,
+      y: touch.clientY - dragStart.y,
+    };
+
+    // Keep within viewport bounds
+    const element = boxRef.current;
+    if (element) {
+      const rect = element.getBoundingClientRect();
+      const maxX = window.innerWidth - rect.width;
+      const maxY = window.innerHeight - rect.height;
+
+      newPosition.x = Math.max(0, Math.min(maxX, newPosition.x));
+      newPosition.y = Math.max(0, Math.min(maxY, newPosition.y));
+    }
+
+    setPosition(newPosition);
+  };
+
+  const handleTouchEnd = () => {
+    if (isDragging) {
+      setIsDragging(false);
+      savePosition(position);
+    }
+  };
+
+  // Attach global mouse and touch event listeners when dragging
   useEffect(() => {
     if (isDragging) {
       document.addEventListener('mousemove', handleMouseMove);
       document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('touchmove', handleTouchMove, { passive: false });
+      document.addEventListener('touchend', handleTouchEnd);
       document.body.style.userSelect = 'none'; // Prevent text selection
       document.body.style.cursor = 'grabbing';
-      
+
       return () => {
         document.removeEventListener('mousemove', handleMouseMove);
         document.removeEventListener('mouseup', handleMouseUp);
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', handleTouchEnd);
         document.body.style.userSelect = '';
         document.body.style.cursor = '';
       };
@@ -141,12 +198,14 @@ const DraggableBox: React.FC<DraggableBoxProps> = ({
         pointerEvents: 'auto', // Ensure pointer events work
       }}
       onMouseDown={title ? undefined : handleMouseDown}
+      onTouchStart={title ? undefined : handleTouchStart}
     >
       {title && (
         <div
           className="drag-handle px-3 py-2 bg-gray-100 rounded-t-lg border-b border-gray-200 cursor-grab active:cursor-grabbing select-none hover:bg-gray-200"
           onMouseDown={handleMouseDown}
-          style={{ pointerEvents: 'auto' }} // Ensure the handle is clickable
+          onTouchStart={handleTouchStart}
+          style={{ pointerEvents: 'auto', touchAction: 'none' }} // Ensure the handle is clickable
         >
           <div className="flex items-center justify-between">
             <span className="text-sm font-semibold text-gray-700 pointer-events-none">{title}</span>

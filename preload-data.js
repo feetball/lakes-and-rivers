@@ -39,12 +39,20 @@ function loadStaticJson(filePath) {
  * Make a cache API call with retry logic
  */
 async function makeCacheRequest(data, retries = 5, host = 'localhost', port = 3000) {
+  const preloadSecret = process.env.PRELOAD_SECRET;
+  if (!preloadSecret) {
+    console.error('[PRELOAD] PRELOAD_SECRET environment variable is not set. Cannot authenticate.');
+    return false;
+  }
   for (let i = 0; i < retries; i++) {
     try {
       console.log(`[PRELOAD] Attempt ${i + 1}/${retries}: Calling cache API at http://${host}:${port}/api/admin/cache`);
       const response = await fetch(`http://${host}:${port}/api/admin/cache`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Preload-Secret': preloadSecret
+        },
         body: JSON.stringify(data),
         timeout: 30000
       });

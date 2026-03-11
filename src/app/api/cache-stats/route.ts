@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getRedisClient } from '@/lib/redis';
+import { logger } from '@/lib/logger';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
@@ -58,7 +59,7 @@ export async function GET() {
         uptime: await getRedisUptime(client)
       };
     } catch (error) {
-      console.warn('Could not get Redis info:', error);
+      logger.warn('Could not get Redis info:', error);
       redisInfo = { memoryUsage: 'Unknown', totalKeys: allKeys.length };
     }
 
@@ -85,15 +86,9 @@ export async function GET() {
       recommendations: generateRecommendations(keysByType, redisInfo)
     };
 
-    return NextResponse.json(response, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
+    return NextResponse.json(response);
   } catch (error) {
-    console.error('Cache statistics API error:', error);
+    logger.error('Cache statistics API error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch cache statistics' },
       { status: 500 }
@@ -159,7 +154,7 @@ async function getKeyDetails(client: any, keys: string[], type: string) {
       }
     } catch (error) {
       // Key might have expired or other error, continue
-      console.warn(`Error processing key ${key}:`, error);
+      logger.warn(`Error processing key ${key}:`, error);
     }
   }
 
@@ -184,7 +179,7 @@ async function getRedisUptime(client: any): Promise<string> {
       return `${days}d ${hours}h ${minutes}m`;
     }
   } catch (error) {
-    console.warn('Could not get Redis uptime:', error);
+    logger.warn('Could not get Redis uptime:', error);
   }
   return 'Unknown';
 }

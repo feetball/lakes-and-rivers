@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
 import { cacheGet, cacheSet, generateBboxCacheKey, CACHE_TTL } from '@/lib/redis';
 import { recordCacheStat } from '../admin/cache/route';
+import { logger } from '@/lib/logger';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
@@ -22,7 +23,7 @@ function isWithinTexas(coordinates: number[][]): boolean {
 
 // Process elements from Overpass API into waterway objects
 function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
-  console.log('[DEBUG] processElements called with', elements.length, 'elements');
+  logger.debug('[DEBUG] processElements called with', elements.length, 'elements');
   
   // Create ways map if not provided
   if (!waysMap) {
@@ -42,11 +43,11 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
       
       // Include ways with geometry and relations with members
       if (element.type === 'way' && !hasGeometry) {
-        console.log('[DEBUG] Filtered out way without geometry:', element.id);
+        logger.debug('[DEBUG] Filtered out way without geometry:', element.id);
         return false;
       }
       if (element.type === 'relation' && !hasMembers) {
-        console.log('[DEBUG] Filtered out relation without members:', element.id);
+        logger.debug('[DEBUG] Filtered out relation without members:', element.id);
         return false;
       }
       
@@ -62,11 +63,11 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
       if (natural === 'water' && name) return true;
       if (landuse === 'reservoir' && name) return true;
       
-      console.log('[DEBUG] Filtered out element - name:', name, 'waterway:', waterway, 'natural:', natural, 'landuse:', landuse);
+      logger.debug('[DEBUG] Filtered out element - name:', name, 'waterway:', waterway, 'natural:', natural, 'landuse:', landuse);
       return false;
     });
     
-    console.log('[DEBUG] After initial filter:', filtered.length, 'elements remain');
+    logger.debug('[DEBUG] After initial filter:', filtered.length, 'elements remain');
     
     return filtered
     .map((element: any) => {
@@ -91,10 +92,10 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
           // Live data with full geometry
           coordinates = element.geometry
             .map((point: any) => [point.lat, point.lon])
-            .filter((coord) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
+            .filter((coord: [number, number]) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
         } else if (element.lat !== undefined && element.lon !== undefined) {
           // Cached data with single point
-          coordinates = [[element.lat, element.lon]].filter((coord) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
+          coordinates = ([[element.lat, element.lon]] as [number, number][]).filter((coord: [number, number]) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
         }
         // Note: cached data with nodes but no geometry would need node resolution
         // For now, skip ways that only have nodes without resolved geometry
@@ -107,11 +108,11 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
         if (outerWays.length > 0) {
           // Combine all outer ways into a single coordinate array
           // This creates a more complete boundary for large lakes
-          const allCoordinates: number[][] = [];
+          const allCoordinates: [number, number][] = [];
           outerWays.forEach((way: any) => {
             const wayCoords = way.geometry
               .map((point: any) => [point.lat, point.lon])
-              .filter((coord) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
+              .filter((coord: [number, number]) => Array.isArray(coord) && coord.length === 2 && isFinite(coord[0]) && isFinite(coord[1]));
             allCoordinates.push(...wayCoords);
           });
           coordinates = allCoordinates;
@@ -131,13 +132,13 @@ function processElements(elements: any[], waysMap?: Map<any, any>): any[] {
       };
     });
     
-    console.log('[DEBUG] After mapping:', filtered.length, 'waterways created');
+    logger.debug('[DEBUG] After mapping:', filtered.length, 'waterways created');
     
     return filtered;
 }
 
 export async function GET(request: NextRequest) {
-  console.log('[DEBUG] Waterways API called');
+  logger.debug('[DEBUG] Waterways API called');
   try {
     const { searchParams } = new URL(request.url);
     
@@ -169,7 +170,7 @@ export async function GET(request: NextRequest) {
     // Generate cache key for this bounding box
     const cacheKey = generateBboxCacheKey(bbox);
 
-    console.log('[DEBUG] Waterways request:', { bbox, cacheKey });
+    logger.debug('[DEBUG] Waterways request:', { bbox, cacheKey });
 
     // If bbox matches Texas, serve from preloaded cache
     const isTexasBbox = Math.abs(bbox.north - TEXAS_BBOX.north) < 0.2 &&
@@ -177,7 +178,7 @@ export async function GET(request: NextRequest) {
       Math.abs(bbox.east - TEXAS_BBOX.east) < 0.2 &&
       Math.abs(bbox.west - TEXAS_BBOX.west) < 0.2;
     
-    console.log('[DEBUG] isTexasBbox:', isTexasBbox, { 
+    logger.debug('[DEBUG] isTexasBbox:', isTexasBbox, {
       northDiff: Math.abs(bbox.north - TEXAS_BBOX.north),
       southDiff: Math.abs(bbox.south - TEXAS_BBOX.south),
       eastDiff: Math.abs(bbox.east - TEXAS_BBOX.east),
@@ -198,16 +199,16 @@ export async function GET(request: NextRequest) {
         } else if (cachedTexas.elements && Array.isArray(cachedTexas.elements)) {
           elementsArray = cachedTexas.elements;
         } else {
-          console.warn('[DEBUG] Cached Texas data has unexpected structure:', typeof cachedTexas, Object.keys(cachedTexas || {}));
+          logger.warn('[DEBUG] Cached Texas data has unexpected structure:', typeof cachedTexas, Object.keys(cachedTexas || {}));
           elementsArray = [];
         }
         
-        console.log('[DEBUG] Processing', elementsArray.length, 'cached elements');
+        logger.debug('[DEBUG] Processing', elementsArray.length, 'cached elements');
         
         // Debug: Check structure of first few cached elements
-        console.log('[DEBUG] Sample cached elements structure:');
-        elementsArray.slice(0, 3).forEach((el, i) => {
-          console.log(`[DEBUG] Element ${i}:`, {
+        logger.debug('[DEBUG] Sample cached elements structure:');
+        elementsArray.slice(0, 3).forEach((el: any, i: number) => {
+          logger.debug(`[DEBUG] Element ${i}:`, {
             type: el.type,
             id: el.id,
             hasGeometry: !!el.geometry,
@@ -228,17 +229,11 @@ export async function GET(request: NextRequest) {
         
         if (hasGeometry) {
           const processedWaterways = processElements(elementsArray);
-          console.log('[DEBUG] After processing cached data:', processedWaterways.length, 'waterways returned');
+          logger.debug('[DEBUG] After processing cached data:', processedWaterways.length, 'waterways returned');
           
-          return NextResponse.json({ waterways: processedWaterways, cached: true }, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
-          });
+          return NextResponse.json({ waterways: processedWaterways, cached: true });
         } else {
-          console.log('[DEBUG] Cached Texas data lacks geometry, falling through to live API call');
+          logger.debug('[DEBUG] Cached Texas data lacks geometry, falling through to live API call');
         }
       }
     }
@@ -253,13 +248,7 @@ export async function GET(request: NextRequest) {
         processElements(cachedWaterways.elements) : 
         cachedWaterways;
       
-      return NextResponse.json({ waterways, cached: true }, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
+      return NextResponse.json({ waterways, cached: true });
     } else {
       recordCacheStat('waterways', false);
     }
@@ -303,15 +292,9 @@ export async function GET(request: NextRequest) {
     // Cache the results for 24 hours
     await cacheSet(cacheKey, waterways, CACHE_TTL.WATERWAYS);
 
-    return NextResponse.json({ waterways, cached: false }, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
+    return NextResponse.json({ waterways, cached: false });
   } catch (error) {
-    console.error('Waterway API error:', error);
+    logger.error('Waterway API error:', error);
     
     // Return empty array instead of fallback data to avoid test polygons
     return NextResponse.json({ waterways: [] });

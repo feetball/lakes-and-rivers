@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { cacheGet, cacheSet, CACHE_TTL } from '@/lib/redis';
+import { validateSiteId } from '@/lib/security';
+import { logger } from '@/lib/logger';
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
@@ -29,26 +31,27 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    if (!validateSiteId(siteId)) {
+      return NextResponse.json(
+        { error: 'Invalid siteId format. Must be 8-15 digits.' },
+        { status: 400 }
+      );
+    }
+
     const cacheKey = `flood_stages:${siteId}`;
     
     // Try to get from cache first
-    console.log('Checking cache for flood stage data:', cacheKey);
+    logger.debug('Checking cache for flood stage data:', cacheKey);
     const cachedData = await cacheGet(cacheKey);
     
     if (cachedData) {
-      console.log('Returning cached flood stage data for site:', siteId);
-      return NextResponse.json({...cachedData, cached: true}, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
+      logger.debug('Returning cached flood stage data for site:', siteId);
+      return NextResponse.json({...cachedData, cached: true});
     }
 
     // Fetch flood stage data from NWS Advanced Hydrologic Prediction Service (AHPS)
     // This is a simplified example - in reality you'd need to map USGS sites to NWS locations
-    console.log('Fetching flood stage data for site:', siteId);
+    logger.debug('Fetching flood stage data for site:', siteId);
     
     // For now, return sample flood stage data based on known Texas sites
     const floodStageData: FloodStageData = {
@@ -59,18 +62,12 @@ export async function GET(request: NextRequest) {
     };
 
     // Cache the results for 7 days since flood stages don't change often
-    console.log('Caching flood stage data for site:', siteId);
+    logger.debug('Caching flood stage data for site:', siteId);
     await cacheSet(cacheKey, floodStageData, CACHE_TTL.FLOOD_STAGES);
     
-    return NextResponse.json({...floodStageData, cached: false}, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
+    return NextResponse.json({...floodStageData, cached: false});
   } catch (error) {
-    console.error('Flood stage API error:', error);
+    logger.error('Flood stage API error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch flood stage data' },
       { status: 500 }
@@ -200,7 +197,7 @@ function getFloodStageForSite(siteId: string): Partial<FloodStageData> {
   
   // Generate conservative defaults for unverified sites
   // These should be reviewed and verified with NWS AHPS data
-  console.warn(`Using default flood stages for unverified site: ${siteId}`);
+  logger.warn(`Using default flood stages for unverified site: ${siteId}`);
   
   return {
     floodStage: 15.0, // Conservative default

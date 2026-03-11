@@ -23,7 +23,7 @@ function isValidBbox(bbox: { north: number; south: number; east: number; west: n
   
   // Maximum height is generally 10 degrees
   if (height > 10) {
-    console.warn(`Bounding box height too large: ${height.toFixed(2)} degrees (max: 10)`);
+    logger.warn(`Bounding box height too large: ${height.toFixed(2)} degrees (max: 10)`);
     return false;
   }
   
@@ -37,7 +37,7 @@ function isValidBbox(bbox: { north: number; south: number; east: number; west: n
   const maxWidth = 3.5 * Math.cos(latRadians);
   
   if (width > maxWidth) {
-    console.warn(`Bounding box width too large: ${width.toFixed(2)} degrees (max: ${maxWidth.toFixed(2)} at lat ${centerLat.toFixed(1)})`);
+    logger.warn(`Bounding box width too large: ${width.toFixed(2)} degrees (max: ${maxWidth.toFixed(2)} at lat ${centerLat.toFixed(1)})`);
     return false;
   }
   
@@ -48,6 +48,8 @@ import axios from 'axios';
 import { cacheGet, cacheSet, generateBboxCacheKey, CACHE_TTL } from '@/lib/redis';
 import { recordCacheStat } from '../admin/cache/route';
 import { CachedUSGSService } from '@/services/cachedUsgs';
+import { validateHours } from '@/lib/security';
+import { logger } from '@/lib/logger';
 
 const USGS_BASE_URL = 'https://waterservices.usgs.gov/nwis/iv/';
 
@@ -71,7 +73,7 @@ async function fetchUSGSDataWithGrid(
   bbox: { north: number; south: number; east: number; west: number },
   hours: number
 ): Promise<any> {
-  console.log('Using grid-based fetch for large bounding box:', bbox);
+  logger.debug('Using grid-based fetch for large bounding box:', bbox);
   
   const gridRows = 6;
   const gridCols = 6;
@@ -98,14 +100,14 @@ async function fetchUSGSDataWithGrid(
       const cellBbox = { west, south, east, north };
       
       if (!isValidBbox(cellBbox)) {
-        console.warn(`Skipping invalid grid cell: W${west} S${south} E${east} N${north}`);
+        logger.warn(`Skipping invalid grid cell: W${west} S${south} E${east} N${north}`);
         continue;
       }
       
       const period = `PT${hours}H`;
       const url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060,00062,00054,62614&siteStatus=active&period=${period}&bBox=${west},${south},${east},${north}`;
       
-      console.log(`Fetching grid cell [${row},${col}]: W${west} S${south} E${east} N${north}`);
+      logger.debug(`Fetching grid cell [${row},${col}]: W${west} S${south} E${east} N${north}`);
       
       // Retry logic for each cell
       let attempt = 0;
@@ -130,18 +132,18 @@ async function fetchUSGSDataWithGrid(
               }
             }
             totalFetched += response.data.value.timeSeries.length;
-            console.log(`Grid cell [${row},${col}] timeSeries: ${response.data.value.timeSeries.length}, new unique: ${newCount}`);
+            logger.debug(`Grid cell [${row},${col}] timeSeries: ${response.data.value.timeSeries.length}, new unique: ${newCount}`);
           } else {
-            console.warn(`Grid cell [${row},${col}] data missing or empty`);
+            logger.warn(`Grid cell [${row},${col}] data missing or empty`);
           }
           success = true;
         } catch (err: any) {
           attempt++;
           if (attempt < maxAttempts) {
-            console.warn(`Grid cell [${row},${col}] failed (attempt ${attempt}/${maxAttempts}): ${err.message}, retrying in 1s...`);
+            logger.warn(`Grid cell [${row},${col}] failed (attempt ${attempt}/${maxAttempts}): ${err.message}, retrying in 1s...`);
             await new Promise(r => setTimeout(r, 1000));
           } else {
-            console.warn(`Grid cell [${row},${col}] failed after ${maxAttempts} attempts: ${err.message}`);
+            logger.warn(`Grid cell [${row},${col}] failed after ${maxAttempts} attempts: ${err.message}`);
           }
         }
       }
@@ -151,7 +153,7 @@ async function fetchUSGSDataWithGrid(
     }
   }
   
-  console.log(`Grid fetch complete. Total unique timeSeries: ${allTimeSeries.length}, total fetched: ${totalFetched}`);
+  logger.debug(`Grid fetch complete. Total unique timeSeries: ${allTimeSeries.length}, total fetched: ${totalFetched}`);
   return { value: { timeSeries: allTimeSeries } };
 }
 
@@ -160,7 +162,7 @@ function processUSGSResponse(responseData: any, hours: number): any[] {
   let sites: any[] = [];
   
   if (responseData?.value?.timeSeries) {
-    console.log('Processing', responseData.value.timeSeries.length, 'time series records');
+    logger.debug('Processing', responseData.value.timeSeries.length, 'time series records');
     
     sites = responseData.value.timeSeries
       .filter((timeSeries: any) => {
@@ -283,7 +285,7 @@ function processUSGSResponse(responseData: any, hours: number): any[] {
     // Filter to only include sites within Texas boundaries
     sites = sites.filter(site => isWithinTexas(site.latitude, site.longitude));
     
-    console.log(`Filtered to ${sites.length} sites within Texas boundaries`);
+    logger.debug(`Filtered to ${sites.length} sites within Texas boundaries`);
   }
   
   return sites;
@@ -295,7 +297,14 @@ export async function GET(request: NextRequest) {
     
     // Get time range parameter (in hours), default to 8 hours
     const hours = parseInt(searchParams.get('hours') || '8');
-    
+
+    if (!validateHours(hours)) {
+      return NextResponse.json(
+        { error: 'Invalid hours value. Must be an integer between 1 and 168.' },
+        { status: 400 }
+      );
+    }
+
     const bbox = {
       north: parseFloat(parseFloat(searchParams.get('north') || '0').toFixed(6)),
       south: parseFloat(parseFloat(searchParams.get('south') || '0').toFixed(6)),
@@ -317,7 +326,7 @@ export async function GET(request: NextRequest) {
       Math.abs(activeBbox.west - TEXAS_BBOX.west) < 0.2;
     
     if (isTexasBbox) {
-      console.log('Texas bounding box detected, checking cache first');
+      logger.debug('Texas bounding box detected, checking cache first');
       const texasKey = 'usgs:stations:texas:all';
       const cachedTexas = await cacheGet(texasKey);
       if (cachedTexas) {
@@ -325,50 +334,33 @@ export async function GET(request: NextRequest) {
         // Check if the cached data is already in the processed format
         if (cachedTexas.sites) {
           // Already processed format
-          return NextResponse.json({ ...cachedTexas, cached: true }, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
-          });
+          return NextResponse.json({ ...cachedTexas, cached: true });
         } else if (cachedTexas.value?.timeSeries) {
           // Raw USGS format - need to process it
-          console.log('Processing cached raw USGS data for Texas');
+          logger.debug('Processing cached raw USGS data for Texas');
           const processedSites = processUSGSResponse(cachedTexas, hours);
           const result = { sites: processedSites, cached: true };
-          return NextResponse.json(result, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
-          });
+          return NextResponse.json(result);
         }
       }
       
       // No Texas cache available, check if live fetching is allowed
       if (!ALLOW_LIVE_USGS_FETCH) {
-        console.log('No Texas cache available and live fetching disabled');
+        logger.debug('No Texas cache available and live fetching disabled');
         return NextResponse.json(
-          { 
+          {
             error: 'No cached Texas data available and live USGS API fetching is disabled',
             sites: [],
-            cached: false 
+            cached: false
           },
-          { 
+          {
             status: 200,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
           }
         );
       }
       
       // Use grid-based approach for Texas
-      console.log('Fetching Texas data using grid approach');
+      logger.debug('Fetching Texas data using grid approach');
       try {
         const gridResponse = await fetchUSGSDataWithGrid(activeBbox, hours);
         const sites = processUSGSResponse(gridResponse, hours);
@@ -382,7 +374,7 @@ export async function GET(request: NextRequest) {
         }));
         
         if (siteMetadata.length > 0) {
-          console.log(`Caching metadata for ${siteMetadata.length} sites from Texas grid fetch`);
+          logger.debug(`Caching metadata for ${siteMetadata.length} sites from Texas grid fetch`);
           await CachedUSGSService.cacheSiteMetadata(siteMetadata);
         }
         
@@ -390,27 +382,16 @@ export async function GET(request: NextRequest) {
         const result = { sites, cached: false };
         
         // Cache the processed results for Texas
-        console.log('Caching Texas grid-fetched USGS data for key:', texasKey);
+        logger.debug('Caching Texas grid-fetched USGS data for key:', texasKey);
         await cacheSet(texasKey, result, CACHE_TTL.USGS_CURRENT);
         
-        return NextResponse.json(result, {
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          },
-        });
+        return NextResponse.json(result);
       } catch (error) {
-        console.error('Texas grid-based USGS fetch failed:', error);
+        logger.error('Texas grid-based USGS fetch failed:', error);
         return NextResponse.json(
           { error: 'Failed to fetch Texas data', sites: [], cached: false },
           {
             status: 500,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
           }
         );
       }
@@ -418,40 +399,29 @@ export async function GET(request: NextRequest) {
 
     // Validate bounding box before making USGS API call
     if (!isValidBbox(activeBbox)) {
-      console.warn('Bounding box too large for USGS API:', activeBbox);
+      logger.warn('Bounding box too large for USGS API:', activeBbox);
       
       // Check if this is a Texas-sized bbox that needs grid approach
       const bboxWidth = activeBbox.east - activeBbox.west;
       const bboxHeight = activeBbox.north - activeBbox.south;
       
       if (bboxWidth > 10 || bboxHeight > 8) {
-        console.log('Large bounding box detected, using grid-based fetch approach');
+        logger.debug('Large bounding box detected, using grid-based fetch approach');
         
         // Check cache first for the full bbox
         const cacheKey = `usgs:${generateBboxCacheKey(activeBbox)}:${hours}h`;
         const cachedData = await cacheGet(cacheKey);
         if (cachedData) {
           recordCacheStat('usgs', true);
-          return NextResponse.json({ ...cachedData, cached: true }, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
-          });
+          return NextResponse.json({ ...cachedData, cached: true });
         }
-        
+
         if (!ALLOW_LIVE_USGS_FETCH) {
-          console.log('Live USGS API fetching disabled, cannot fetch large bbox without cache');
+          logger.debug('Live USGS API fetching disabled, cannot fetch large bbox without cache');
           return NextResponse.json(
             { error: 'Large bounding box requires live fetching which is disabled', sites: [], cached: false },
             {
               status: 400,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              },
             }
           );
         }
@@ -470,7 +440,7 @@ export async function GET(request: NextRequest) {
           }));
           
           if (siteMetadata.length > 0) {
-            console.log(`Caching metadata for ${siteMetadata.length} sites from grid fetch`);
+            logger.debug(`Caching metadata for ${siteMetadata.length} sites from grid fetch`);
             await CachedUSGSService.cacheSiteMetadata(siteMetadata);
           }
           
@@ -478,27 +448,16 @@ export async function GET(request: NextRequest) {
           const result = { sites, cached: false };
           
           // Cache the processed results
-          console.log('Caching grid-fetched USGS data for key:', cacheKey);
+          logger.debug('Caching grid-fetched USGS data for key:', cacheKey);
           await cacheSet(cacheKey, result, CACHE_TTL.USGS_CURRENT);
           
-          return NextResponse.json(result, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
-          });
+          return NextResponse.json(result);
         } catch (error) {
-          console.error('Grid-based USGS fetch failed:', error);
+          logger.error('Grid-based USGS fetch failed:', error);
           return NextResponse.json(
             { error: 'Failed to fetch large bounding box data', sites: [], cached: false },
             {
               status: 500,
-              headers: {
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Methods': 'GET',
-                'Access-Control-Allow-Headers': 'Content-Type',
-              },
             }
           );
         }
@@ -514,34 +473,23 @@ export async function GET(request: NextRequest) {
       
       // Check if the fallback bbox is valid
       if (isValidBbox(fallbackBbox)) {
-        console.log('Using fallback bounding box:', fallbackBbox);
+        logger.debug('Using fallback bounding box:', fallbackBbox);
         // Update activeBbox to use the valid fallback
         Object.assign(activeBbox, fallbackBbox);
       } else {
         // If even the fallback fails, return an error
-        console.warn('Even fallback bbox is invalid, using cached data only');
+        logger.warn('Even fallback bbox is invalid, using cached data only');
         const cacheKey = `usgs:${generateBboxCacheKey(activeBbox)}:${hours}h`;
         const cachedData = await cacheGet(cacheKey);
         if (cachedData) {
           recordCacheStat('usgs', true);
-          return NextResponse.json({ ...cachedData, cached: true }, {
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
-          });
+          return NextResponse.json({ ...cachedData, cached: true });
         }
-        
+
         return NextResponse.json(
           { error: 'Bounding box too large for USGS API and no cached data available', sites: [], cached: false },
           {
             status: 400,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
           }
         );
       }
@@ -549,36 +497,25 @@ export async function GET(request: NextRequest) {
 
     // Check if live USGS API fetching is disabled
     if (!ALLOW_LIVE_USGS_FETCH) {
-      console.log('Live USGS API fetching is disabled, checking cache only');
+      logger.debug('Live USGS API fetching is disabled, checking cache only');
       // Try to get from cache first
       const cacheKey = `usgs:${generateBboxCacheKey(activeBbox)}:${hours}h`;
       const cachedData = await cacheGet(cacheKey);
       if (cachedData) {
         recordCacheStat('usgs', true);
-        console.log('Returning cached USGS data:', cacheKey);
-        return NextResponse.json({ ...cachedData, cached: true }, {
-          headers: {
-            'Access-Control-Allow-Origin': '*',
-            'Access-Control-Allow-Methods': 'GET',
-            'Access-Control-Allow-Headers': 'Content-Type',
-          },
-        });
+        logger.debug('Returning cached USGS data:', cacheKey);
+        return NextResponse.json({ ...cachedData, cached: true });
       } else {
         recordCacheStat('usgs', false);
-        console.log('No cached data available and live fetching disabled');
+        logger.debug('No cached data available and live fetching disabled');
         return NextResponse.json(
-          { 
+          {
             error: 'No cached data available and live USGS API fetching is disabled',
             sites: [],
-            cached: false 
+            cached: false
           },
-          { 
+          {
             status: 200,
-            headers: {
-              'Access-Control-Allow-Origin': '*',
-              'Access-Control-Allow-Methods': 'GET',
-              'Access-Control-Allow-Headers': 'Content-Type',
-            },
           }
         );
       }
@@ -588,31 +525,19 @@ export async function GET(request: NextRequest) {
     const cacheKey = `usgs:${generateBboxCacheKey(activeBbox)}:${hours}h`;
     
     // Try to get from cache first
-    console.log('Checking cache for USGS data:', cacheKey);
+    logger.debug('Checking cache for USGS data:', cacheKey);
     const cachedData = await cacheGet(cacheKey);
     if (cachedData) {
       recordCacheStat('usgs', true);
-      console.log('Returning cached USGS data:', cacheKey);
-      return NextResponse.json({ ...cachedData, cached: true }, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
+      logger.debug('Returning cached USGS data:', cacheKey);
+      return NextResponse.json({ ...cachedData, cached: true });
     } else {
       recordCacheStat('usgs', false);
     }
 
     if (!ALLOW_LIVE_USGS_FETCH) {
-      console.log('Live USGS fetching is disabled. Returning cached data if available.');
-      return NextResponse.json({ sites: [], cached: true }, {
-        headers: {
-          'Access-Control-Allow-Origin': '*',
-          'Access-Control-Allow-Methods': 'GET',
-          'Access-Control-Allow-Headers': 'Content-Type',
-        },
-      });
+      logger.debug('Live USGS fetching is disabled. Returning cached data if available.');
+      return NextResponse.json({ sites: [], cached: true });
     }
 
     // Convert hours to ISO 8601 duration format for USGS API
@@ -626,7 +551,7 @@ export async function GET(request: NextRequest) {
     // Always include bounding box (either provided or default)
     url += `&bBox=${activeBbox.west},${activeBbox.south},${activeBbox.east},${activeBbox.north}`;
 
-    console.log('Fetching from USGS:', url);
+    logger.debug('Fetching from USGS:', url);
 
     const response = await axios.get(url);
     
@@ -642,7 +567,7 @@ export async function GET(request: NextRequest) {
     }));
     
     if (siteMetadata.length > 0) {
-      console.log(`Caching metadata for ${siteMetadata.length} sites`);
+      logger.debug(`Caching metadata for ${siteMetadata.length} sites`);
       await CachedUSGSService.cacheSiteMetadata(siteMetadata);
     }
     
@@ -650,19 +575,12 @@ export async function GET(request: NextRequest) {
     const result = { sites, cached: false };
     
     // Cache the processed results with shorter TTL for current conditions
-    console.log('Caching USGS data for key:', cacheKey);
+    logger.debug('Caching USGS data for key:', cacheKey);
     await cacheSet(cacheKey, result, CACHE_TTL.USGS_CURRENT);
     
-    // Add CORS headers
-    return NextResponse.json(result, {
-      headers: {
-        'Access-Control-Allow-Origin': '*',
-        'Access-Control-Allow-Methods': 'GET',
-        'Access-Control-Allow-Headers': 'Content-Type',
-      },
-    });
+    return NextResponse.json(result);
   } catch (error) {
-    console.error('USGS API error:', error);
+    logger.error('USGS API error:', error);
     return NextResponse.json(
       { error: 'Failed to fetch USGS data' },
       { status: 500 }

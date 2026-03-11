@@ -57,11 +57,12 @@ export async function GET() {
       }
     });
   } catch (error) {
+    console.error('Health check error:', error);
     return NextResponse.json(
       {
         status: 'unhealthy',
         timestamp: new Date().toISOString(),
-        error: error instanceof Error ? error.message : 'Unknown error'
+        error: 'Internal server error'
       },
       { status: 500 }
     );
