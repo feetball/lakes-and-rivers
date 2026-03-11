@@ -150,7 +150,7 @@ export default function WaterMap() {
       setCurrentViewBounds(texasBounds);
 
       // Load both gauge sites and waterways for the Texas area only
-      await loadAll(texasBounds, globalTrendHours, { maxSites: 200 });
+      await loadAll(texasBounds, globalTrendHours, { maxSites: 500 });
     } else {
       console.log('Map movement too small, not loading new data');
     }
@@ -160,7 +160,7 @@ export default function WaterMap() {
   useEffect(() => {
     console.log('Initial load for full Texas:', TEXAS_BBOX);
 
-    loadAll(TEXAS_BBOX, globalTrendHours, { maxSites: 200 });
+    loadAll(TEXAS_BBOX, globalTrendHours, { maxSites: 500 });
 
     setLastLoadedBounds(TEXAS_BBOX);
     setCurrentViewBounds(TEXAS_BBOX);
@@ -170,7 +170,7 @@ export default function WaterMap() {
   useEffect(() => {
     if (currentViewBounds) {
       const timeoutId = setTimeout(() => {
-        loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 200 });
+        loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 500 });
       }, 300); // Debounce API calls by 300ms
 
       return () => clearTimeout(timeoutId);
@@ -199,7 +199,7 @@ export default function WaterMap() {
         <div className="text-center">
           <p className="text-lg text-red-700">{error}</p>
           <button 
-            onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 200 })}
+            onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 500 })}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
           >
             Retry
@@ -326,7 +326,7 @@ export default function WaterMap() {
               </div>
             </div>
             <button
-              onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 200 })}
+              onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 500 })}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
             >
               Refresh

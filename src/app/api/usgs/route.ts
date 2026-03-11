@@ -81,52 +81,56 @@ async function fetchUSGSDataWithGrid(
   const lonStep = (bbox.east - bbox.west) / gridCols;
   
   let allTimeSeries: any[] = [];
-  let allIds = new Set<string>();
+  // Track by siteId + variable to allow multiple parameters per site
+  // (e.g. gage height AND streamflow for the same gauge)
+  let seenKeys = new Set<string>();
   let totalFetched = 0;
-  
+
   for (let row = 0; row < gridRows; row++) {
     for (let col = 0; col < gridCols; col++) {
       let south = bbox.south + row * latStep;
       let north = south + latStep;
       let west = bbox.west + col * lonStep;
       let east = west + lonStep;
-      
+
       // Clamp and round coordinates
       south = round7(clamp(south, -90, 90));
       north = round7(clamp(north, -90, 90));
       west = round7(clamp(west, -180, 180));
       east = round7(clamp(east, -180, 180));
-      
+
       const cellBbox = { west, south, east, north };
-      
+
       if (!isValidBbox(cellBbox)) {
         logger.warn(`Skipping invalid grid cell: W${west} S${south} E${east} N${north}`);
         continue;
       }
-      
+
       const period = `PT${hours}H`;
       const url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060,00062,00054,62614&siteStatus=active&period=${period}&bBox=${west},${south},${east},${north}`;
-      
+
       logger.debug(`Fetching grid cell [${row},${col}]: W${west} S${south} E${east} N${north}`);
-      
+
       // Retry logic for each cell
       let attempt = 0;
       const maxAttempts = 3;
       let success = false;
-      
+
       while (attempt < maxAttempts && !success) {
         try {
           const response = await axios.get(url);
-          
+
           if (response.data?.value?.timeSeries && response.data.value.timeSeries.length > 0) {
             let newCount = 0;
             for (const ts of response.data.value.timeSeries) {
               // Validate data structure before accessing nested properties
               if (ts?.sourceInfo?.siteCode?.length > 0) {
                 const siteId = ts.sourceInfo.siteCode[0]?.value;
-                if (siteId && !allIds.has(siteId)) {
+                const varName = ts.variable?.variableName || '';
+                const dedupKey = `${siteId}:${varName}`;
+                if (siteId && !seenKeys.has(dedupKey)) {
                   allTimeSeries.push(ts);
-                  allIds.add(siteId);
+                  seenKeys.add(dedupKey);
                   newCount++;
                 }
               }
@@ -147,7 +151,7 @@ async function fetchUSGSDataWithGrid(
           }
         }
       }
-      
+
       // Delay between grid cells to be respectful to the API
       await new Promise(r => setTimeout(r, 500));
     }
