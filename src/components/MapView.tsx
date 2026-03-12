@@ -14,6 +14,7 @@ import MapControls from './map/MapControls';
 import MapChartOverlay from './MapChartOverlay';
 import WaterwayLayer from './WaterwayLayer';
 import FloodAwareWaterwayLayer from './FloodAwareWaterwayLayer';
+import RiverOverlayLayer from './RiverOverlayLayer';
 import FloodPredictionPanel from './FloodPredictionPanel';
 
 // Import Leaflet CSS only on client side when component loads
@@ -448,11 +449,12 @@ const MapView: React.FC<MapViewProps> = ({
           maxZoom={19}
           tileSize={256}
         />
-        <FloodAwareWaterwayLayer 
-          waterways={waterwaysVisible ? waterways : []} 
+        <FloodAwareWaterwayLayer
+          waterways={waterwaysVisible ? waterways : []}
           gaugeSites={sites}
           enabled={floodAwarenessEnabled}
         />
+        <RiverOverlayLayer rivers={['Guadalupe River']} />
         {gaugeSitesVisible && visibleSites.map((site) => (
           <Marker
             key={site.id}
