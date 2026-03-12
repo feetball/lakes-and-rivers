@@ -268,7 +268,8 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({ water
 
   // ─── Gauge-to-gauge river lines (fallback when waterway data is missing) ───
   // Groups active gauges by river name and draws colored lines between them.
-  // Always computed so it fills gaps where no Overpass waterway geometry exists.
+  // Tries to snap to nearby waterway geometry so the traces follow the actual
+  // river path instead of rendering as straight lines between gauge locations.
   const gaugeRiverSegments = useMemo((): GaugeRiverSegment[] => {
     if (!enabled || activeGauges.length === 0) return [];
 
@@ -277,14 +278,12 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({ water
     for (const segments of waterwaySegments.values()) {
       for (const seg of segments) {
         if (seg.gaugeName) {
-          // Find gauge by name
           const g = activeGauges.find(ag => ag.site.name === seg.gaugeName);
           if (g) matchedGaugeIds.add(g.site.id);
         }
       }
     }
 
-    // Only use gauges that weren't matched to a waterway
     const unmatchedGauges = activeGauges.filter(g => !matchedGaugeIds.has(g.site.id));
     if (unmatchedGauges.length === 0) return [];
 
@@ -297,18 +296,85 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({ water
       byRiver.set(gauge.riverKey, existing);
     }
 
+    // Pre-filter waterways with valid geometry for snapping
+    const geometryWaterways = waterways
+      .filter(w => w.type !== 'lake' && w.type !== 'reservoir')
+      .map(w => ({
+        waterway: w,
+        coords: filterValidCoords(w.coordinates),
+        normalizedName: normalizeRiverName(w.name),
+      }))
+      .filter(w => w.coords.length > 1);
+
+    /** Snap radius for the geometry search (slightly wider than the Tier-1 proximity) */
+    const SNAP_RADIUS = 0.2;
+
+    /**
+     * Find waterway geometry connecting two gauge locations.
+     * Prefers a name-matched waterway, falls back to any waterway near both points.
+     */
+    function findGeometryBetween(
+      fromLat: number, fromLon: number,
+      toLat: number, toLon: number,
+      riverName: string,
+    ): [number, number][] | null {
+      let bestCoords: [number, number][] | null = null;
+      let bestScore = Infinity;
+
+      for (const { coords, normalizedName } of geometryWaterways) {
+        const fromProj = findClosestCoord(coords, fromLat, fromLon);
+        const toProj = findClosestCoord(coords, toLat, toLon);
+
+        if (fromProj.dist >= SNAP_RADIUS || toProj.dist >= SNAP_RADIUS) continue;
+        if (fromProj.idx === toProj.idx) continue;
+
+        // Combined proximity score, halved if the river name also matches
+        let score = fromProj.dist + toProj.dist;
+        if (riverNamesMatch(normalizedName, riverName)) {
+          score *= 0.5;
+        }
+
+        if (score < bestScore) {
+          bestScore = score;
+          const startIdx = Math.min(fromProj.idx, toProj.idx);
+          const endIdx = Math.max(fromProj.idx, toProj.idx);
+          bestCoords = coords.slice(startIdx, endIdx + 1);
+        }
+      }
+
+      return bestCoords;
+    }
+
+    const riskSeverity: Record<FloodRisk, number> = {
+      extreme: 5, high: 4, moderate: 3, normal: 2, low: 1, unknown: 0,
+    };
+
     const segments: GaugeRiverSegment[] = [];
 
     for (const [riverKey, gauges] of byRiver) {
       if (gauges.length < 2) {
-        // Single gauge: draw a short stub line so the river name is still visible
+        // Single gauge: try to snap a short stub to nearby geometry
         const g = gauges[0];
         const lat = g.site.latitude;
         const lon = g.site.longitude;
-        // Small stub ~0.01° upstream/downstream
+
+        let stubCoords: [number, number][] | null = null;
+        for (const { coords, normalizedName } of geometryWaterways) {
+          const proj = findClosestCoord(coords, lat, lon);
+          if (proj.dist >= SNAP_RADIUS) continue;
+          // Prefer name match
+          const isNameMatch = riverNamesMatch(normalizedName, g.riverName);
+          const startIdx = Math.max(0, proj.idx - 3);
+          const endIdx = Math.min(coords.length - 1, proj.idx + 3);
+          if (endIdx > startIdx) {
+            stubCoords = coords.slice(startIdx, endIdx + 1);
+            if (isNameMatch) break; // name match is ideal, stop searching
+          }
+        }
+
         segments.push({
           key: `gauge-river-${riverKey}-0`,
-          coords: [[lat + 0.005, lon - 0.005], [lat, lon], [lat - 0.005, lon + 0.005]],
+          coords: stubCoords || [[lat + 0.005, lon - 0.005], [lat, lon], [lat - 0.005, lon + 0.005]],
           risk: g.risk,
           riverName: g.riverName,
           gaugeName: g.site.name,
@@ -323,20 +389,22 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({ water
         return a.site.latitude - b.site.latitude;
       });
 
-      // Draw a segment between each consecutive pair of gauges
       for (let i = 0; i < sorted.length - 1; i++) {
         const from = sorted[i];
         const to = sorted[i + 1];
 
-        // Use the worse (higher severity) risk of the two endpoints
-        const riskSeverity: Record<FloodRisk, number> = {
-          extreme: 5, high: 4, moderate: 3, normal: 2, low: 1, unknown: 0,
-        };
         const risk = riskSeverity[from.risk] >= riskSeverity[to.risk] ? from.risk : to.risk;
+
+        // Try to snap to actual waterway geometry between the two gauges
+        const snappedCoords = findGeometryBetween(
+          from.site.latitude, from.site.longitude,
+          to.site.latitude, to.site.longitude,
+          from.riverName,
+        );
 
         segments.push({
           key: `gauge-river-${riverKey}-${i}`,
-          coords: [
+          coords: snappedCoords || [
             [from.site.latitude, from.site.longitude],
             [to.site.latitude, to.site.longitude],
           ],
@@ -347,10 +415,11 @@ const FloodAwareWaterwayLayer: React.FC<FloodAwareWaterwayLayerProps> = ({ water
       }
     }
 
-    console.log(`[FloodAware] Gauge-river fallback: ${unmatchedGauges.length} unmatched gauges, ${byRiver.size} rivers, ${segments.length} segments`);
+    const snappedCount = segments.filter(s => s.coords.length > 2).length;
+    console.log(`[FloodAware] Gauge-river fallback: ${unmatchedGauges.length} unmatched gauges, ${byRiver.size} rivers, ${segments.length} segments (${snappedCount} snapped to geometry)`);
 
     return segments;
-  }, [activeGauges, waterwaySegments, enabled]);
+  }, [activeGauges, waterwaySegments, enabled, waterways]);
 
   // Filter out invalid coordinates
   const validWaterways = waterways.filter(
