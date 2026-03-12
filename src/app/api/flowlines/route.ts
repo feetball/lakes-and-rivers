@@ -6,12 +6,105 @@ import { logger } from '@/lib/logger';
 export const dynamic = 'force-dynamic';
 
 const NHDPLUS_URL = 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/4/query';
+const TEXAS_BBOX = { north: 36.5, south: 25.8, east: -93.5, west: -106.7 } as const;
+const TEXAS_GRID_ROWS = 4;
+const TEXAS_GRID_COLS = 4;
+const PAGE_SIZE = 1000;
+const TEXAS_EPSILON = 0.2;
 
 interface FlowlineFeature {
   id: string;
   name: string;
   type: 'river' | 'stream';
   coordinates: [number, number][];
+}
+
+interface FlowlineQueryBounds {
+  north: number;
+  south: number;
+  east: number;
+  west: number;
+}
+
+function isTexasWideRequest(bounds: FlowlineQueryBounds): boolean {
+  return (
+    Math.abs(bounds.north - TEXAS_BBOX.north) < TEXAS_EPSILON &&
+    Math.abs(bounds.south - TEXAS_BBOX.south) < TEXAS_EPSILON &&
+    Math.abs(bounds.east - TEXAS_BBOX.east) < TEXAS_EPSILON &&
+    Math.abs(bounds.west - TEXAS_BBOX.west) < TEXAS_EPSILON
+  );
+}
+
+function buildTexasGrid(): FlowlineQueryBounds[] {
+  const latStep = (TEXAS_BBOX.north - TEXAS_BBOX.south) / TEXAS_GRID_ROWS;
+  const lonStep = (TEXAS_BBOX.east - TEXAS_BBOX.west) / TEXAS_GRID_COLS;
+  const cells: FlowlineQueryBounds[] = [];
+
+  for (let row = 0; row < TEXAS_GRID_ROWS; row++) {
+    for (let col = 0; col < TEXAS_GRID_COLS; col++) {
+      const south = TEXAS_BBOX.south + row * latStep;
+      const north = row === TEXAS_GRID_ROWS - 1 ? TEXAS_BBOX.north : south + latStep;
+      const west = TEXAS_BBOX.west + col * lonStep;
+      const east = col === TEXAS_GRID_COLS - 1 ? TEXAS_BBOX.east : west + lonStep;
+
+      cells.push({ north, south, east, west });
+    }
+  }
+
+  return cells;
+}
+
+async function fetchFlowlineFeatures(bounds: FlowlineQueryBounds) {
+  const geometry = JSON.stringify({
+    xmin: bounds.west,
+    ymin: bounds.south,
+    xmax: bounds.east,
+    ymax: bounds.north,
+  });
+
+  const allFeatures: any[] = [];
+  let resultOffset = 0;
+
+  while (true) {
+    const params = new URLSearchParams({
+      where: "FTYPE = 'StreamRiver'",
+      geometry,
+      geometryType: 'esriGeometryEnvelope',
+      inSR: '4326',
+      spatialRel: 'esriSpatialRelIntersects',
+      outFields: 'OBJECTID,GNIS_NAME,FTYPE,COMID,StreamOrde,LevelPathI',
+      returnGeometry: 'true',
+      outSR: '4326',
+      f: 'json',
+      resultRecordCount: String(PAGE_SIZE),
+      resultOffset: String(resultOffset),
+    });
+
+    const response = await axios.get(`${NHDPLUS_URL}?${params.toString()}`, {
+      timeout: 30000,
+    });
+
+    const features = response.data?.features || [];
+    const apiError = response.data?.error;
+    if (apiError) {
+      throw new Error(apiError.message || 'NHDPlus query failed');
+    }
+
+    allFeatures.push(...features);
+
+    if (features.length < PAGE_SIZE) {
+      break;
+    }
+
+    resultOffset += PAGE_SIZE;
+
+    if (resultOffset > 20000) {
+      logger.warn(`[flowlines] Reached pagination cap for bbox s=${bounds.south} w=${bounds.west} n=${bounds.north} e=${bounds.east}`);
+      break;
+    }
+  }
+
+  return allFeatures;
 }
 
 /**
@@ -36,7 +129,11 @@ export async function GET(request: NextRequest) {
     const rs = Math.round(south * 100) / 100;
     const re = Math.round(east * 100) / 100;
     const rw = Math.round(west * 100) / 100;
-    const cacheKey = `flowlines:${rs},${rw},${rn},${re}`;
+    const requestedBounds = { north, south, east, west };
+    const isTexasWide = isTexasWideRequest(requestedBounds);
+    const cacheKey = isTexasWide
+      ? 'flowlines:texas:all:v2'
+      : `flowlines:${rs},${rw},${rn},${re}`;
 
     // Check cache first
     const cached = await cacheGet(cacheKey);
@@ -45,34 +142,31 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ waterways: cached, cached: true });
     }
 
-    logger.debug(`[flowlines] Fetching NHDPlus for bbox s=${south} w=${west} n=${north} e=${east}`);
+    logger.debug(
+      `[flowlines] Fetching NHDPlus for bbox s=${south} w=${west} n=${north} e=${east} (texasWide=${isTexasWide})`
+    );
 
-    // Query NHDPlus for named flowlines in the bbox.
-    // Layer 4 = Flowline - Small Scale (visible at larger map scales).
-    // We only fetch named rivers/streams (GNIS_NAME IS NOT NULL) to keep
-    // the response size manageable and match-able to gauge sites.
-    const geometry = JSON.stringify({ xmin: west, ymin: south, xmax: east, ymax: north });
+    const queryBounds = isTexasWide ? buildTexasGrid() : [requestedBounds];
+    const rawFeatures: any[] = [];
+    const seenFeatureIds = new Set<string>();
 
-    // Fetch up to 500 named flowlines
-    const params = new URLSearchParams({
-      where: 'GNIS_NAME IS NOT NULL',
-      geometry,
-      geometryType: 'esriGeometryEnvelope',
-      inSR: '4326',
-      spatialRel: 'esriSpatialRelIntersects',
-      outFields: 'GNIS_NAME,FTYPE,COMID,StreamOrde,LevelPathI',
-      returnGeometry: 'true',
-      outSR: '4326',
-      f: 'json',
-      resultRecordCount: '1000',
-    });
+    for (const bbox of queryBounds) {
+      const features = await fetchFlowlineFeatures(bbox);
 
-    const response = await axios.get(`${NHDPLUS_URL}?${params.toString()}`, {
-      timeout: 30000,
-    });
+      for (const feature of features) {
+        const attrs = feature?.attributes || {};
+        const dedupeKey = String(attrs.COMID || attrs.OBJECTID || '');
+        if (dedupeKey && seenFeatureIds.has(dedupeKey)) {
+          continue;
+        }
+        if (dedupeKey) {
+          seenFeatureIds.add(dedupeKey);
+        }
+        rawFeatures.push(feature);
+      }
+    }
 
-    const features = response.data?.features || [];
-    logger.debug(`[flowlines] NHDPlus returned ${features.length} features`);
+    logger.debug(`[flowlines] NHDPlus returned ${rawFeatures.length} unique features`);
 
     // Convert ArcGIS JSON to our Waterway format.
     // Group segments that share the same LevelPathI (same river) and
@@ -84,12 +178,12 @@ export async function GET(request: NextRequest) {
       streamOrder: number;
     }>();
 
-    for (const feat of features) {
+    for (const feat of rawFeatures) {
       const attrs = feat.attributes || {};
       const geom = feat.geometry || {};
       const paths: number[][][] = geom.paths || [];
-      const name: string = attrs.GNIS_NAME || '';
-      if (!name || paths.length === 0) continue;
+      const name: string = attrs.GNIS_NAME || 'Unnamed stream';
+      if (paths.length === 0) continue;
 
       const levelPath = String(attrs.LevelPathI || attrs.COMID || '');
       const streamOrder = attrs.StreamOrde || 1;
@@ -97,7 +191,7 @@ export async function GET(request: NextRequest) {
       const type: 'river' | 'stream' = streamOrder >= 3 ? 'river' : 'stream';
 
       // Use LevelPathI to group segments of the same river together
-      const key = `${levelPath}-${name}`;
+      const key = `${levelPath || attrs.OBJECTID}-${name}`;
       const existing = pathGroups.get(key);
 
       // Convert ArcGIS [lon, lat] → Leaflet [lat, lon]

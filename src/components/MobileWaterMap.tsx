@@ -32,6 +32,7 @@ export default function MobileWaterMap() {
     loading,
     error,
     loadAll,
+    loadSitesForBounds,
   } = useWaterData();
   const [globalTrendHours, setGlobalTrendHours] = useState(24);
   const [isMobile, setIsMobile] = useState(false);
@@ -49,10 +50,14 @@ export default function MobileWaterMap() {
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Load data on mount and when trend hours change
+  // Load statewide waterways once along with the initial statewide site set.
   useEffect(() => {
     loadAll(TEXAS_BBOX, globalTrendHours);
-  }, [globalTrendHours, loadAll]);
+  }, [loadAll]);
+
+  useEffect(() => {
+    loadSitesForBounds(TEXAS_BBOX, globalTrendHours);
+  }, [globalTrendHours, loadSitesForBounds]);
 
   const handleTrendHoursChange = (hours: number) => {
     setGlobalTrendHours(hours);

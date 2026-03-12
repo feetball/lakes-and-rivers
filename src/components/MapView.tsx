@@ -12,16 +12,11 @@ import SiteTooltipContent from './map/SiteTooltip';
 import SitePopupContent from './map/SitePopup';
 import MapControls from './map/MapControls';
 import MapChartOverlay from './MapChartOverlay';
-import WaterwayLayer from './WaterwayLayer';
 import FloodAwareWaterwayLayer from './FloodAwareWaterwayLayer';
-import RiverOverlayLayer from './RiverOverlayLayer';
 import FloodPredictionPanel from './FloodPredictionPanel';
 
 // Import Leaflet CSS only on client side when component loads
 import 'leaflet/dist/leaflet.css';
-
-// Stable reference so RiverOverlayLayer's useEffect doesn't re-fire on every render
-const OVERLAY_RIVERS = ['Guadalupe River'];
 
 // Fix for default markers in react-leaflet - moved to useEffect to avoid SSR issues
 let leafletIconsFixed = false;
@@ -457,7 +452,6 @@ const MapView: React.FC<MapViewProps> = ({
           gaugeSites={sites}
           enabled={floodAwarenessEnabled}
         />
-        <RiverOverlayLayer rivers={OVERLAY_RIVERS} />
         {gaugeSitesVisible && visibleSites.map((site) => (
           <Marker
             key={site.id}
