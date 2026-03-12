@@ -57,7 +57,6 @@ export async function GET() {
 }
 
 export async function DELETE(request: NextRequest) {
-  // Require authentication for deleting cache keys, allow preload/health checks
   if (!authenticate(request) && !isPreloadRequest(request)) {
     return new NextResponse('Unauthorized', {
       status: 401,
