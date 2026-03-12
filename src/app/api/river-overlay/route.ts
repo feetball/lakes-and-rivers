@@ -42,37 +42,37 @@ export async function GET(request: NextRequest) {
 
     logger.debug(`[river-overlay] Fetching NHDPlus geometry for "${riverName}"`);
 
-    // Texas bounding box to scope the query
-    const geometry = JSON.stringify({
-      xmin: -106.7, ymin: 25.8, xmax: -93.5, ymax: 36.5,
-    });
+    // No spatial filter — the WHERE clause on GNIS_Name is sufficient and
+    // NHDPlus Layer 6 silently returns 0 features when a large bbox is
+    // combined with returnGeometry=true.
 
     const allSegments: { coordinates: [number, number][] }[] = [];
     let offset = 0;
-    const pageSize = 2000;
+    const pageSize = 200; // Layer 6 times out with large pages + geometry
     let hasMore = true;
 
     while (hasMore) {
       const params = new URLSearchParams({
-        where: `GNIS_Name = '${riverName}'`,
-        geometry,
-        geometryType: 'esriGeometryEnvelope',
-        inSR: '4326',
-        spatialRel: 'esriSpatialRelIntersects',
-        outFields: 'GNIS_Name,StreamOrde,LevelPathI,Hydroseq',
+        where: `gnis_name = '${riverName}'`,
+        outFields: 'gnis_name,lengthkm,reachcode',
         returnGeometry: 'true',
         outSR: '4326',
         f: 'json',
         resultRecordCount: String(pageSize),
         resultOffset: String(offset),
-        orderByFields: 'Hydroseq DESC',
       });
 
       const response = await axios.get(`${NHDPLUS_URL}?${params.toString()}`, {
-        timeout: 30000,
+        timeout: 45000,
       });
 
       const features = response.data?.features || [];
+      const apiError = response.data?.error;
+      if (apiError) {
+        logger.warn(`[river-overlay] NHDPlus API error at offset ${offset}:`, apiError);
+        break;
+      }
+
       logger.debug(`[river-overlay] Page at offset ${offset}: ${features.length} features`);
 
       for (const feat of features) {
@@ -91,8 +91,8 @@ export async function GET(request: NextRequest) {
       hasMore = features.length === pageSize;
       offset += pageSize;
 
-      // Safety limit
-      if (offset > 10000) break;
+      // Safety limit — with pageSize 200 this allows up to 5000 features
+      if (offset > 5000) break;
     }
 
     logger.debug(`[river-overlay] Total segments for "${riverName}": ${allSegments.length}`);
