@@ -149,12 +149,14 @@ export default function WaterMap() {
       setLastLoadedBounds(texasBounds);
       setCurrentViewBounds(texasBounds);
 
-      // Waterways are loaded statewide at startup. Bounds changes only need site refreshes.
-      await loadSitesForBounds(texasBounds, globalTrendHours, { maxSites: 500 });
+      await Promise.all([
+        loadSitesForBounds(texasBounds, globalTrendHours, { maxSites: 500 }),
+        loadWaterwaysForBounds(texasBounds),
+      ]);
     } else {
       console.log('Map movement too small, not loading new data');
     }
-  }, [lastLoadedBounds, loadSitesForBounds, clampToTexas, globalTrendHours]);
+  }, [lastLoadedBounds, loadSitesForBounds, loadWaterwaysForBounds, clampToTexas, globalTrendHours]);
 
   // Initialize with statewide gauges and statewide river/stream geometry.
   useEffect(() => {
@@ -181,6 +183,14 @@ export default function WaterMap() {
     setSelectedState(state);
     // You could implement state-specific loading here
   };
+
+  const handleRefresh = useCallback(async () => {
+    const activeBounds = currentViewBounds || TEXAS_BBOX;
+    await Promise.all([
+      loadSitesForBounds(activeBounds, globalTrendHours, { maxSites: 500 }),
+      loadWaterwaysForBounds(activeBounds),
+    ]);
+  }, [currentViewBounds, globalTrendHours, loadSitesForBounds, loadWaterwaysForBounds]);
 
   if (loading) {
     return (
@@ -326,7 +336,7 @@ export default function WaterMap() {
               </div>
             </div>
             <button
-              onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 500 })}
+              onClick={handleRefresh}
               className="px-3 py-1 bg-blue-600 text-white rounded text-sm hover:bg-blue-700"
             >
               Refresh

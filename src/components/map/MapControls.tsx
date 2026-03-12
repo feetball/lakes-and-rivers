@@ -2,6 +2,7 @@
 
 import React from 'react';
 import DraggableBox from '../DraggableBox';
+import { WaterwayOverlayMode } from '@/services/waterways';
 
 interface MapControlsProps {
   controlsPosition: { x: number; y: number };
@@ -14,6 +15,8 @@ interface MapControlsProps {
   onChartsVisibleChange: (visible: boolean) => void;
   waterwaysVisible: boolean;
   onWaterwaysVisibleChange: (visible: boolean) => void;
+  waterwayOverlayMode: WaterwayOverlayMode;
+  onWaterwayOverlayModeChange: (mode: WaterwayOverlayMode) => void;
   floodAwarenessEnabled: boolean;
   onFloodAwarenessChange: (enabled: boolean) => void;
   isLocalNetwork: boolean;
@@ -33,6 +36,8 @@ const MapControls: React.FC<MapControlsProps> = ({
   onChartsVisibleChange,
   waterwaysVisible,
   onWaterwaysVisibleChange,
+  waterwayOverlayMode,
+  onWaterwayOverlayModeChange,
   floodAwarenessEnabled,
   onFloodAwarenessChange,
   isLocalNetwork,
@@ -96,8 +101,22 @@ const MapControls: React.FC<MapControlsProps> = ({
               onChange={e => onWaterwaysVisibleChange(e.target.checked)}
               className="rounded"
             />
-            <span className="text-gray-700">Show Rivers & Lakes</span>
+            <span className="text-gray-700">Show Waterways</span>
           </label>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            River Overlay Mode
+          </label>
+          <select
+            className="border rounded px-2 py-1 text-sm bg-white text-gray-700 w-full"
+            value={waterwayOverlayMode}
+            onChange={e => onWaterwayOverlayModeChange(e.target.value as WaterwayOverlayMode)}
+          >
+            <option value="major">Major Rivers Statewide</option>
+            <option value="local">Local Streams In Current View</option>
+          </select>
         </div>
 
         <div>

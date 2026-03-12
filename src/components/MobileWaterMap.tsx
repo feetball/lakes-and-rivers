@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import { WaterSite } from '@/types/water';
 import { Waterway } from '@/services/waterways';
-import { useWaterData } from '@/hooks/useWaterData';
+import { useWaterData, BBox } from '@/hooks/useWaterData';
 import { TEXAS_BBOX } from '@/constants/texas';
 
 // Dynamically import MapView to avoid SSR issues
@@ -23,6 +23,7 @@ const DynamicMap = dynamic(() => import('../components/MapView'), {
   waterways: Waterway[];
   globalTrendHours: number;
   onTrendHoursChange: (hours: number) => void;
+  onMapBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
 }>;
 
 export default function MobileWaterMap() {
@@ -33,6 +34,7 @@ export default function MobileWaterMap() {
     error,
     loadAll,
     loadSitesForBounds,
+    loadWaterwaysForBounds,
   } = useWaterData();
   const [globalTrendHours, setGlobalTrendHours] = useState(24);
   const [isMobile, setIsMobile] = useState(false);
@@ -65,6 +67,17 @@ export default function MobileWaterMap() {
 
   const handleRefresh = () => {
     loadAll(TEXAS_BBOX, globalTrendHours);
+  };
+
+  const handleMapBoundsChange = (bounds: BBox) => {
+    const texasBounds = {
+      north: Math.min(bounds.north, TEXAS_BBOX.north),
+      south: Math.max(bounds.south, TEXAS_BBOX.south),
+      east: Math.min(bounds.east, TEXAS_BBOX.east),
+      west: Math.max(bounds.west, TEXAS_BBOX.west),
+    };
+
+    loadWaterwaysForBounds(texasBounds);
   };
 
   if (loading) {
@@ -204,6 +217,7 @@ export default function MobileWaterMap() {
           waterways={waterways}
           globalTrendHours={globalTrendHours}
           onTrendHoursChange={handleTrendHoursChange}
+          onMapBoundsChange={handleMapBoundsChange}
         />
       </div>
     </div>

@@ -7,10 +7,9 @@ export const dynamic = 'force-dynamic';
 
 const NHDPLUS_URL = 'https://hydro.nationalmap.gov/arcgis/rest/services/nhd/MapServer/4/query';
 const TEXAS_BBOX = { north: 36.5, south: 25.8, east: -93.5, west: -106.7 } as const;
-const TEXAS_GRID_ROWS = 4;
-const TEXAS_GRID_COLS = 4;
 const PAGE_SIZE = 1000;
 const TEXAS_EPSILON = 0.2;
+const TEXASWIDE_MIN_STREAM_ORDER = 8;
 
 interface FlowlineFeature {
   id: string;
@@ -35,26 +34,7 @@ function isTexasWideRequest(bounds: FlowlineQueryBounds): boolean {
   );
 }
 
-function buildTexasGrid(): FlowlineQueryBounds[] {
-  const latStep = (TEXAS_BBOX.north - TEXAS_BBOX.south) / TEXAS_GRID_ROWS;
-  const lonStep = (TEXAS_BBOX.east - TEXAS_BBOX.west) / TEXAS_GRID_COLS;
-  const cells: FlowlineQueryBounds[] = [];
-
-  for (let row = 0; row < TEXAS_GRID_ROWS; row++) {
-    for (let col = 0; col < TEXAS_GRID_COLS; col++) {
-      const south = TEXAS_BBOX.south + row * latStep;
-      const north = row === TEXAS_GRID_ROWS - 1 ? TEXAS_BBOX.north : south + latStep;
-      const west = TEXAS_BBOX.west + col * lonStep;
-      const east = col === TEXAS_GRID_COLS - 1 ? TEXAS_BBOX.east : west + lonStep;
-
-      cells.push({ north, south, east, west });
-    }
-  }
-
-  return cells;
-}
-
-async function fetchFlowlineFeatures(bounds: FlowlineQueryBounds) {
+async function fetchFlowlineFeatures(bounds: FlowlineQueryBounds, whereClause: string) {
   const geometry = JSON.stringify({
     xmin: bounds.west,
     ymin: bounds.south,
@@ -67,7 +47,7 @@ async function fetchFlowlineFeatures(bounds: FlowlineQueryBounds) {
 
   while (true) {
     const params = new URLSearchParams({
-      where: "FTYPE = 'StreamRiver'",
+      where: whereClause,
       geometry,
       geometryType: 'esriGeometryEnvelope',
       inSR: '4326',
@@ -98,7 +78,7 @@ async function fetchFlowlineFeatures(bounds: FlowlineQueryBounds) {
 
     resultOffset += PAGE_SIZE;
 
-    if (resultOffset > 20000) {
+    if (resultOffset > 10000) {
       logger.warn(`[flowlines] Reached pagination cap for bbox s=${bounds.south} w=${bounds.west} n=${bounds.north} e=${bounds.east}`);
       break;
     }
@@ -132,7 +112,7 @@ export async function GET(request: NextRequest) {
     const requestedBounds = { north, south, east, west };
     const isTexasWide = isTexasWideRequest(requestedBounds);
     const cacheKey = isTexasWide
-      ? 'flowlines:texas:all:v2'
+      ? 'flowlines:texas:all:v4'
       : `flowlines:${rs},${rw},${rn},${re}`;
 
     // Check cache first
@@ -146,24 +126,24 @@ export async function GET(request: NextRequest) {
       `[flowlines] Fetching NHDPlus for bbox s=${south} w=${west} n=${north} e=${east} (texasWide=${isTexasWide})`
     );
 
-    const queryBounds = isTexasWide ? buildTexasGrid() : [requestedBounds];
+    const whereClause = isTexasWide
+      ? `GNIS_NAME IS NOT NULL AND StreamOrde >= ${TEXASWIDE_MIN_STREAM_ORDER}`
+      : "GNIS_NAME IS NOT NULL";
     const rawFeatures: any[] = [];
     const seenFeatureIds = new Set<string>();
 
-    for (const bbox of queryBounds) {
-      const features = await fetchFlowlineFeatures(bbox);
+    const features = await fetchFlowlineFeatures(requestedBounds, whereClause);
 
-      for (const feature of features) {
-        const attrs = feature?.attributes || {};
-        const dedupeKey = String(attrs.COMID || attrs.OBJECTID || '');
-        if (dedupeKey && seenFeatureIds.has(dedupeKey)) {
-          continue;
-        }
-        if (dedupeKey) {
-          seenFeatureIds.add(dedupeKey);
-        }
-        rawFeatures.push(feature);
+    for (const feature of features) {
+      const attrs = feature?.attributes || {};
+      const dedupeKey = String(attrs.COMID || attrs.OBJECTID || '');
+      if (dedupeKey && seenFeatureIds.has(dedupeKey)) {
+        continue;
       }
+      if (dedupeKey) {
+        seenFeatureIds.add(dedupeKey);
+      }
+      rawFeatures.push(feature);
     }
 
     logger.debug(`[flowlines] NHDPlus returned ${rawFeatures.length} unique features`);

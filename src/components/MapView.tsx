@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
 import L from 'leaflet';
 import { WaterSite } from '@/types/water';
-import { Waterway } from '@/services/waterways';
+import { Waterway, WaterwayOverlayMode } from '@/services/waterways';
 import { createCustomIcon } from '@/lib/floodRisk';
 import SiteTooltipContent from './map/SiteTooltip';
 import SitePopupContent from './map/SitePopup';
@@ -208,6 +208,7 @@ const MapView: React.FC<MapViewProps> = ({
   const [visibleSites, setVisibleSites] = useState<WaterSite[]>(initialSites);
   const [chartsVisible, setChartsVisible] = useState(false);
   const [waterwaysVisible, setWaterwaysVisible] = useState(true);
+  const [waterwayOverlayMode, setWaterwayOverlayMode] = useState<WaterwayOverlayMode>('major');
   const [gaugeSitesVisible, setGaugeSitesVisible] = useState(true);
   const [floodAwarenessEnabled, setFloodAwarenessEnabled] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -398,6 +399,22 @@ const MapView: React.FC<MapViewProps> = ({
     }
   }, [gaugeSitesVisible, onVisibilityStatsChange, sites.length, visibleSites.length]);
 
+  const renderedWaterways = useMemo(() => {
+    if (!waterwaysVisible) return [];
+
+    return waterways.filter((waterway) => {
+      if (waterway.type !== 'river' && waterway.type !== 'stream') {
+        return false;
+      }
+
+      if (waterwayOverlayMode === 'major') {
+        return waterway.detailLevel === 'statewide';
+      }
+
+      return waterway.detailLevel !== 'statewide';
+    });
+  }, [waterways, waterwaysVisible, waterwayOverlayMode]);
+
   return (
     <div className="relative h-full w-full">
       {/* Chart Time Range and Controls - Now Draggable */}
@@ -413,6 +430,8 @@ const MapView: React.FC<MapViewProps> = ({
           onChartsVisibleChange={setChartsVisible}
           waterwaysVisible={waterwaysVisible}
           onWaterwaysVisibleChange={setWaterwaysVisible}
+          waterwayOverlayMode={waterwayOverlayMode}
+          onWaterwayOverlayModeChange={setWaterwayOverlayMode}
           floodAwarenessEnabled={floodAwarenessEnabled}
           onFloodAwarenessChange={setFloodAwarenessEnabled}
           isLocalNetwork={isLocalNetwork}
@@ -448,7 +467,7 @@ const MapView: React.FC<MapViewProps> = ({
           tileSize={256}
         />
         <FloodAwareWaterwayLayer
-          waterways={waterwaysVisible ? waterways : []}
+          waterways={renderedWaterways}
           gaugeSites={sites}
           enabled={floodAwarenessEnabled}
         />

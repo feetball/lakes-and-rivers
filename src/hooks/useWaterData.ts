@@ -40,6 +40,15 @@ export function useWaterData(): UseWaterDataReturn {
     floodStages?: string;
   }>({});
 
+  const isTexasWideBbox = useCallback((bbox: BBox) => {
+    return (
+      Math.abs(bbox.north - TEXAS_BBOX.north) < 0.2 &&
+      Math.abs(bbox.south - TEXAS_BBOX.south) < 0.2 &&
+      Math.abs(bbox.east - TEXAS_BBOX.east) < 0.2 &&
+      Math.abs(bbox.west - TEXAS_BBOX.west) < 0.2
+    );
+  }, []);
+
   // Enrich a site with flood-stage-derived waterLevelStatus
   const enrichWithFloodStatus = (site: WaterSite): WaterSite => {
     if (!site.gageHeight || !site.floodStage) {
@@ -126,6 +135,7 @@ export function useWaterData(): UseWaterDataReturn {
   const loadWaterwaysForBounds = useCallback(async (bbox: BBox) => {
     try {
       console.log('Loading waterways for bounds:', bbox);
+      const loadingStatewide = isTexasWideBbox(bbox);
 
       const waterwayData = await WaterwayService.getWaterways(bbox);
 
@@ -137,19 +147,30 @@ export function useWaterData(): UseWaterDataReturn {
         return;
       }
 
-      // Merge: keep existing waterways and add/update with new ones
       setWaterways(prev => {
-        const merged = new Map<string, Waterway>();
-        for (const w of prev) merged.set(w.id, w);
-        for (const w of waterwayData) merged.set(w.id, w);
-        console.log(`[useWaterData] Merged waterways: ${prev.length} existing + ${waterwayData.length} new = ${merged.size} total`);
-        return Array.from(merged.values());
+        const existingStatewide = prev.filter(w => w.detailLevel === 'statewide');
+        const existingViewport = prev.filter(w => w.detailLevel !== 'statewide');
+
+        const nextSegment = new Map<string, Waterway>();
+        for (const waterway of waterwayData) {
+          nextSegment.set(waterway.id, waterway);
+        }
+
+        const nextWaterways = loadingStatewide
+          ? [...Array.from(nextSegment.values()), ...existingViewport]
+          : [...existingStatewide, ...Array.from(nextSegment.values())];
+
+        console.log(
+          `[useWaterData] Stored ${loadingStatewide ? 'statewide' : 'viewport'} waterways: ${nextSegment.size}; total=${nextWaterways.length}`
+        );
+
+        return nextWaterways;
       });
     } catch (err) {
       console.error('Error loading waterways:', err);
       // Don't set error state or clear waterways — keep whatever we have
     }
-  }, []);
+  }, [isTexasWideBbox]);
 
   /**
    * Convenience: load both sites and waterways in parallel.
