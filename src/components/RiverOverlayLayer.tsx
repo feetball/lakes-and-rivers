@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { Polyline, Tooltip } from "react-leaflet";
 
 interface RiverSegment {
@@ -26,6 +26,10 @@ const RiverOverlayLayer: React.FC<RiverOverlayLayerProps> = ({
     Map<string, RiverSegment[]>
   >(new Map());
 
+  // Stabilize the dependency so the effect only re-runs when the actual
+  // river names change, not on every render due to a new array reference.
+  const riversKey = useMemo(() => rivers.slice().sort().join('\0'), [rivers]);
+
   useEffect(() => {
     if (rivers.length === 0) return;
 
@@ -39,10 +43,22 @@ const RiverOverlayLayer: React.FC<RiverOverlayLayerProps> = ({
           const resp = await fetch(
             `/api/river-overlay?name=${encodeURIComponent(name)}`
           );
-          if (!resp.ok) continue;
+          if (!resp.ok) {
+            console.warn(`[RiverOverlay] Non-OK response for "${name}": ${resp.status}`);
+            continue;
+          }
           const data = await resp.json();
-          if (data.segments && !cancelled) {
+          if (cancelled) return;
+
+          if (data.error) {
+            console.warn(`[RiverOverlay] API error for "${name}": ${data.error}`);
+          }
+
+          if (data.segments && data.segments.length > 0) {
+            console.log(`[RiverOverlay] Loaded ${data.segments.length} segments for "${name}"`);
             newData.set(name, data.segments);
+          } else {
+            console.warn(`[RiverOverlay] No segments returned for "${name}"`);
           }
         } catch (err) {
           console.error(`[RiverOverlay] Failed to fetch "${name}":`, err);
@@ -56,7 +72,7 @@ const RiverOverlayLayer: React.FC<RiverOverlayLayerProps> = ({
 
     fetchRivers();
     return () => { cancelled = true; };
-  }, [rivers]);
+  }, [riversKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <>

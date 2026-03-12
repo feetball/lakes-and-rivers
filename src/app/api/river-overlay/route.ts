@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import axios from 'axios';
-import { cacheGet, cacheSet, CACHE_TTL } from '@/lib/redis';
+import { cacheGet, cacheSet, cacheDelete, CACHE_TTL } from '@/lib/redis';
 import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
@@ -22,11 +22,22 @@ export async function GET(request: NextRequest) {
     }
 
     const cacheKey = `river-overlay:${riverName.toLowerCase().replace(/\s+/g, '-')}`;
+    const forceRefresh = searchParams.get('force') === '1';
 
-    const cached = await cacheGet(cacheKey);
-    if (cached) {
-      logger.debug(`[river-overlay] Cache hit: ${cacheKey}`);
-      return NextResponse.json({ segments: cached, cached: true });
+    if (!forceRefresh) {
+      const cached = await cacheGet(cacheKey);
+      if (cached) {
+        // Don't serve cached empty results — treat them as a miss
+        if (Array.isArray(cached) && cached.length > 0) {
+          logger.debug(`[river-overlay] Cache hit: ${cacheKey} (${cached.length} segments)`);
+          return NextResponse.json({ segments: cached, cached: true });
+        }
+        logger.debug(`[river-overlay] Cached result was empty — refetching for ${cacheKey}`);
+        await cacheDelete(cacheKey);
+      }
+    } else {
+      logger.debug(`[river-overlay] Force refresh requested for ${cacheKey}`);
+      await cacheDelete(cacheKey);
     }
 
     logger.debug(`[river-overlay] Fetching NHDPlus geometry for "${riverName}"`);
@@ -85,6 +96,11 @@ export async function GET(request: NextRequest) {
     }
 
     logger.debug(`[river-overlay] Total segments for "${riverName}": ${allSegments.length}`);
+
+    if (allSegments.length === 0) {
+      logger.warn(`[river-overlay] No segments found for "${riverName}" — not caching empty result`);
+      return NextResponse.json({ segments: [], cached: false });
+    }
 
     // Try to join contiguous segments for smoother rendering
     const joined = joinSegments(allSegments.map(s => s.coordinates));
