@@ -1,30 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import dynamic from 'next/dynamic';
-import { WaterSite } from '@/types/water';
-import { Waterway } from '@/services/waterways';
+import MapView from '@/components/MapView';
 import { useWaterData, BBox } from '@/hooks/useWaterData';
 import { TEXAS_BBOX } from '@/constants/texas';
-
-// Dynamically import MapView to avoid SSR issues
-const DynamicMap = dynamic(() => import('../components/MapView'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-screen bg-blue-50">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-2 text-sm text-gray-700">Loading map...</p>
-      </div>
-    </div>
-  ),
-}) as React.ComponentType<{ 
-  sites: WaterSite[]; 
-  waterways: Waterway[];
-  globalTrendHours: number;
-  onTrendHoursChange: (hours: number) => void;
-  onMapBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
-}>;
 
 export default function MobileWaterMap() {
   const {
@@ -80,36 +59,21 @@ export default function MobileWaterMap() {
     loadWaterwaysForBounds(texasBounds);
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-blue-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-lg text-gray-700">Loading water level data...</p>
-          {isMobile && <p className="mt-2 text-sm text-gray-500">This may take a moment on mobile</p>}
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-red-50">
-        <div className="text-center p-4">
-          <p className="text-lg text-red-700 mb-4">{error}</p>
-          <button 
-            onClick={handleRefresh}
-            className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const statusBanner = error ? (
+    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1100] bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-1 rounded shadow">
+      {error}{' '}
+      <button onClick={handleRefresh} className="underline ml-2">Retry</button>
+    </div>
+  ) : loading && sites.length === 0 ? (
+    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1100] bg-white border border-gray-200 text-gray-600 text-xs px-3 py-1 rounded shadow flex items-center gap-2">
+      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+      Loading gauges…
+    </div>
+  ) : null;
 
   return (
     <div className="h-screen w-full relative">
+      {statusBanner}
       {/* Mobile-Optimized Header */}
       <div className={`absolute top-0 left-0 right-0 z-[1000] bg-white shadow-md ${isMobile ? 'pb-2' : ''}`}>
         <div className={`p-4 ${isMobile ? 'pb-2' : ''}`}>
@@ -212,8 +176,8 @@ export default function MobileWaterMap() {
 
       {/* Map Container with proper mobile spacing */}
       <div className={`absolute inset-0 ${isMobile ? 'top-16 bottom-24' : 'top-20'}`}>
-        <DynamicMap 
-          sites={sites} 
+        <MapView
+          sites={sites}
           waterways={waterways}
           globalTrendHours={globalTrendHours}
           onTrendHoursChange={handleTrendHoursChange}
