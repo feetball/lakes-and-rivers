@@ -61,7 +61,13 @@ const STATIC_USGS_JSON_PATH = path.join(process.cwd(), 'data', 'static', 'texas-
 // Control whether to allow live USGS API fetching (default: false - Redis only)
 const ALLOW_LIVE_USGS_FETCH = process.env.ALLOW_LIVE_USGS_FETCH === 'true';
 
-const staticSitesByHours = new Map<number, any[]>();
+type UsgsSite = {
+  latitude: number;
+  longitude: number;
+  [key: string]: unknown;
+};
+
+const staticSitesByHours = new Map<number, UsgsSite[]>();
 
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
@@ -79,13 +85,13 @@ function isSiteWithinBbox(
   );
 }
 
-async function loadStaticTexasSites(hours: number): Promise<any[]> {
+async function loadStaticTexasSites(hours: number): Promise<UsgsSite[]> {
   if (staticSitesByHours.has(hours)) {
     return staticSitesByHours.get(hours) || [];
   }
 
   try {
-    let rawData: any = null;
+    let rawData: unknown;
     try {
       const compressed = await fs.readFile(STATIC_USGS_GZ_PATH);
       rawData = JSON.parse(gunzipSync(compressed).toString('utf8'));
@@ -94,7 +100,7 @@ async function loadStaticTexasSites(hours: number): Promise<any[]> {
       rawData = JSON.parse(json);
     }
 
-    const processed = processUSGSResponse(rawData, hours);
+    const processed = processUSGSResponse(rawData, hours) as UsgsSite[];
     staticSitesByHours.set(hours, processed);
     logger.debug(`Loaded ${processed.length} static USGS sites for ${hours}h fallback`);
     return processed;
@@ -108,7 +114,7 @@ async function loadStaticTexasSites(hours: number): Promise<any[]> {
 async function getStaticFallbackSites(
   hours: number,
   bbox: { north: number; south: number; east: number; west: number }
-): Promise<any[]> {
+): Promise<UsgsSite[]> {
   const sites = await loadStaticTexasSites(hours);
   return sites.filter((site) => isSiteWithinBbox(site, bbox));
 }
