@@ -394,7 +394,7 @@ const MapView: React.FC<MapViewProps> = ({
     if (!waterwaysVisible) return [];
 
     return waterways.filter((waterway) => {
-      if (waterway.type !== 'river' && waterway.type !== 'stream') return false;
+      if (waterway.type !== 'river') return false;
       return Array.isArray(waterway.coordinates) && waterway.coordinates.length > 1;
     });
   }, [waterways, waterwaysVisible]);
