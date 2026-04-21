@@ -10,6 +10,26 @@ const TEXAS_BBOX = { north: 36.5, south: 25.8, east: -93.5, west: -106.7 } as co
 const PAGE_SIZE = 1000;
 const TEXAS_EPSILON = 0.2;
 const TEXASWIDE_MIN_STREAM_ORDER = 8;
+const NHDPLUS_TIMEOUT_MS = 15000;
+
+// Process-local cache — survives between requests within the same server
+// process even if Redis is unavailable. Keys mirror the Redis cache keys.
+const memoryWaterwayCache = new Map<string, { data: any; expiresAt: number }>();
+const MEMORY_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+
+function memoryGet(key: string): any | null {
+  const entry = memoryWaterwayCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt < Date.now()) {
+    memoryWaterwayCache.delete(key);
+    return null;
+  }
+  return entry.data;
+}
+
+function memorySet(key: string, data: any): void {
+  memoryWaterwayCache.set(key, { data, expiresAt: Date.now() + MEMORY_TTL_MS });
+}
 
 interface FlowlineFeature {
   id: string;
@@ -61,7 +81,7 @@ async function fetchFlowlineFeatures(bounds: FlowlineQueryBounds, whereClause: s
     });
 
     const response = await axios.get(`${NHDPLUS_URL}?${params.toString()}`, {
-      timeout: 30000,
+      timeout: NHDPLUS_TIMEOUT_MS,
     });
 
     const features = response.data?.features || [];
@@ -115,10 +135,19 @@ export async function GET(request: NextRequest) {
       ? 'flowlines:texas:all:v4'
       : `flowlines:${rs},${rw},${rn},${re}`;
 
-    // Check cache first
+    // Check in-memory cache first, then Redis. The in-memory copy lets the
+    // server respond instantly on subsequent requests even when Redis is
+    // unavailable (dev / preview deployments).
+    const cachedMemory = memoryGet(cacheKey);
+    if (cachedMemory) {
+      logger.debug(`[flowlines] Memory cache hit: ${cacheKey}`);
+      return NextResponse.json({ waterways: cachedMemory, cached: true });
+    }
+
     const cached = await cacheGet(cacheKey);
     if (cached) {
-      logger.debug(`[flowlines] Cache hit: ${cacheKey}`);
+      logger.debug(`[flowlines] Redis cache hit: ${cacheKey}`);
+      memorySet(cacheKey, cached);
       return NextResponse.json({ waterways: cached, cached: true });
     }
 
@@ -228,6 +257,7 @@ export async function GET(request: NextRequest) {
     logger.debug(`[flowlines] Processed ${waterways.length} waterways from ${pathGroups.size} river groups`);
 
     // Cache for 24 hours — NHD geometry doesn't change
+    memorySet(cacheKey, waterways);
     await cacheSet(cacheKey, waterways, CACHE_TTL.WATERWAYS || 86400);
 
     return NextResponse.json({ waterways, cached: false });

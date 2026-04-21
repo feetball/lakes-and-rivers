@@ -69,6 +69,39 @@ type UsgsSite = {
 
 const staticSitesByHours = new Map<number, UsgsSite[]>();
 
+// Guards against spawning multiple concurrent Texas refreshes.
+const inflightTexasRefresh = new Map<string, Promise<void>>();
+
+async function refreshTexasCacheInBackground(
+  bbox: { north: number; south: number; east: number; west: number },
+  hours: number,
+  cacheKey: string
+): Promise<void> {
+  if (inflightTexasRefresh.has(cacheKey)) return;
+  const task = (async () => {
+    try {
+      logger.debug('[background] Refreshing Texas USGS cache via live grid fetch');
+      const gridResponse = await fetchUSGSDataWithGrid(bbox, hours);
+      const sites = processUSGSResponse(gridResponse, hours);
+      if (sites.length === 0) {
+        logger.warn('[background] Grid fetch returned zero Texas sites; leaving cache untouched');
+        return;
+      }
+      const siteMetadata = sites.map((site: any) => ({
+        id: site.id, name: site.name, latitude: site.latitude, longitude: site.longitude,
+      }));
+      await CachedUSGSService.cacheSiteMetadata(siteMetadata);
+      await cacheSet(cacheKey, { sites, cached: false }, CACHE_TTL.USGS_CURRENT);
+      logger.debug(`[background] Cached ${sites.length} Texas sites`);
+    } catch (err) {
+      logger.warn('[background] Texas cache refresh failed:', err);
+    } finally {
+      inflightTexasRefresh.delete(cacheKey);
+    }
+  })();
+  inflightTexasRefresh.set(cacheKey, task);
+}
+
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
 
@@ -128,95 +161,75 @@ function round7(v: number): number {
   return Math.round(v * 1e7) / 1e7;
 }
 
-// Fetch data using grid approach to avoid USGS API size limits
+// Fetch data using grid approach to avoid USGS API size limits.
+// Cells are fetched in parallel with a small concurrency limit rather than
+// one-at-a-time — the previous serial version took 18+ seconds of artificial
+// delay on every cold load.
 async function fetchUSGSDataWithGrid(
   bbox: { north: number; south: number; east: number; west: number },
   hours: number
 ): Promise<any> {
   logger.debug('Using grid-based fetch for large bounding box:', bbox);
-  
-  const gridRows = 6;
-  const gridCols = 6;
+
+  const gridRows = 4;
+  const gridCols = 4;
+  const concurrency = 6;
   const latStep = (bbox.north - bbox.south) / gridRows;
   const lonStep = (bbox.east - bbox.west) / gridCols;
-  
-  let allTimeSeries: any[] = [];
-  // Track by siteId + variable to allow multiple parameters per site
-  // (e.g. gage height AND streamflow for the same gauge)
-  let seenKeys = new Set<string>();
-  let totalFetched = 0;
 
+  type Cell = { row: number; col: number; bbox: { west: number; south: number; east: number; north: number } };
+  const cells: Cell[] = [];
   for (let row = 0; row < gridRows; row++) {
     for (let col = 0; col < gridCols; col++) {
-      let south = bbox.south + row * latStep;
-      let north = south + latStep;
-      let west = bbox.west + col * lonStep;
-      let east = west + lonStep;
-
-      // Clamp and round coordinates
-      south = round7(clamp(south, -90, 90));
-      north = round7(clamp(north, -90, 90));
-      west = round7(clamp(west, -180, 180));
-      east = round7(clamp(east, -180, 180));
-
+      const south = round7(clamp(bbox.south + row * latStep, -90, 90));
+      const north = round7(clamp(south + latStep, -90, 90));
+      const west = round7(clamp(bbox.west + col * lonStep, -180, 180));
+      const east = round7(clamp(west + lonStep, -180, 180));
       const cellBbox = { west, south, east, north };
-
       if (!isValidBbox(cellBbox)) {
         logger.warn(`Skipping invalid grid cell: W${west} S${south} E${east} N${north}`);
         continue;
       }
+      cells.push({ row, col, bbox: cellBbox });
+    }
+  }
 
-      const period = `PT${hours}H`;
-      const url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060,00062,00054,62614&siteStatus=active&period=${period}&bBox=${west},${south},${east},${north}`;
+  const period = `PT${hours}H`;
+  const allTimeSeries: any[] = [];
+  const seenKeys = new Set<string>();
+  let totalFetched = 0;
 
-      logger.debug(`Fetching grid cell [${row},${col}]: W${west} S${south} E${east} N${north}`);
+  const fetchCell = async (cell: Cell): Promise<any[]> => {
+    const { west, south, east, north } = cell.bbox;
+    const url = `${USGS_BASE_URL}?format=json&parameterCd=00065,00060,00062,00054,62614&siteStatus=active&period=${period}&bBox=${west},${south},${east},${north}`;
+    try {
+      const response = await axios.get(url, { timeout: 20000 });
+      return response.data?.value?.timeSeries || [];
+    } catch (err: any) {
+      logger.warn(`Grid cell [${cell.row},${cell.col}] failed: ${err.message}`);
+      return [];
+    }
+  };
 
-      // Retry logic for each cell
-      let attempt = 0;
-      const maxAttempts = 3;
-      let success = false;
-
-      while (attempt < maxAttempts && !success) {
-        try {
-          const response = await axios.get(url);
-
-          if (response.data?.value?.timeSeries && response.data.value.timeSeries.length > 0) {
-            let newCount = 0;
-            for (const ts of response.data.value.timeSeries) {
-              // Validate data structure before accessing nested properties
-              if (ts?.sourceInfo?.siteCode?.length > 0) {
-                const siteId = ts.sourceInfo.siteCode[0]?.value;
-                const varName = ts.variable?.variableName || '';
-                const dedupKey = `${siteId}:${varName}`;
-                if (siteId && !seenKeys.has(dedupKey)) {
-                  allTimeSeries.push(ts);
-                  seenKeys.add(dedupKey);
-                  newCount++;
-                }
-              }
-            }
-            totalFetched += response.data.value.timeSeries.length;
-            logger.debug(`Grid cell [${row},${col}] timeSeries: ${response.data.value.timeSeries.length}, new unique: ${newCount}`);
-          } else {
-            logger.warn(`Grid cell [${row},${col}] data missing or empty`);
-          }
-          success = true;
-        } catch (err: any) {
-          attempt++;
-          if (attempt < maxAttempts) {
-            logger.warn(`Grid cell [${row},${col}] failed (attempt ${attempt}/${maxAttempts}): ${err.message}, retrying in 1s...`);
-            await new Promise(r => setTimeout(r, 1000));
-          } else {
-            logger.warn(`Grid cell [${row},${col}] failed after ${maxAttempts} attempts: ${err.message}`);
+  for (let i = 0; i < cells.length; i += concurrency) {
+    const batch = cells.slice(i, i + concurrency);
+    const results = await Promise.all(batch.map(fetchCell));
+    for (const tsList of results) {
+      totalFetched += tsList.length;
+      for (const ts of tsList) {
+        if (ts?.sourceInfo?.siteCode?.length > 0) {
+          const siteId = ts.sourceInfo.siteCode[0]?.value;
+          const varName = ts.variable?.variableName || '';
+          const dedupKey = `${siteId}:${varName}`;
+          if (siteId && !seenKeys.has(dedupKey)) {
+            allTimeSeries.push(ts);
+            seenKeys.add(dedupKey);
           }
         }
       }
-
-      // Delay between grid cells to be respectful to the API
-      await new Promise(r => setTimeout(r, 500));
     }
   }
-  
+
   logger.debug(`Grid fetch complete. Total unique timeSeries: ${allTimeSeries.length}, total fetched: ${totalFetched}`);
   return { value: { timeSeries: allTimeSeries } };
 }
@@ -407,55 +420,50 @@ export async function GET(request: NextRequest) {
           return NextResponse.json(result);
         }
       }
-      
-      // No Texas cache available, check if live fetching is allowed
+
+      recordCacheStat('usgs', false);
+
+      // Cache miss for Texas. The grid-based live fetch takes many seconds,
+      // so always prefer the bundled static snapshot if available — it gives
+      // the client something to render immediately. A background refresh
+      // below will populate the Redis cache for the next request.
+      const staticSites = await getStaticFallbackSites(hours, activeBbox);
+
+      if (ALLOW_LIVE_USGS_FETCH) {
+        void refreshTexasCacheInBackground(activeBbox, hours, texasKey);
+      }
+
+      if (staticSites.length > 0) {
+        return NextResponse.json({ sites: staticSites, cached: true, source: 'static' });
+      }
+
       if (!ALLOW_LIVE_USGS_FETCH) {
-        logger.debug('No Texas cache available and live fetching disabled - trying static fallback');
-        const staticSites = await getStaticFallbackSites(hours, activeBbox);
-        if (staticSites.length > 0) {
-          return NextResponse.json({ sites: staticSites, cached: true, source: 'static' });
-        }
         return NextResponse.json({
           error: 'No cached Texas data available and static fallback data is unavailable',
           sites: [],
           cached: false
         }, { status: 200 });
       }
-      
-      // Use grid-based approach for Texas
-      logger.debug('Fetching Texas data using grid approach');
+
+      // No static fallback — fall through to a synchronous grid fetch.
+      logger.debug('Fetching Texas data using grid approach (no static fallback)');
       try {
         const gridResponse = await fetchUSGSDataWithGrid(activeBbox, hours);
         const sites = processUSGSResponse(gridResponse, hours);
-        
-        // Cache site metadata for future use  
         const siteMetadata = sites.map(site => ({
-          id: site.id,
-          name: site.name,
-          latitude: site.latitude,
-          longitude: site.longitude
+          id: site.id, name: site.name, latitude: site.latitude, longitude: site.longitude,
         }));
-        
         if (siteMetadata.length > 0) {
-          logger.debug(`Caching metadata for ${siteMetadata.length} sites from Texas grid fetch`);
           await CachedUSGSService.cacheSiteMetadata(siteMetadata);
         }
-        
-        // Return processed sites data
         const result = { sites, cached: false };
-        
-        // Cache the processed results for Texas
-        logger.debug('Caching Texas grid-fetched USGS data for key:', texasKey);
         await cacheSet(texasKey, result, CACHE_TTL.USGS_CURRENT);
-        
         return NextResponse.json(result);
       } catch (error) {
         logger.error('Texas grid-based USGS fetch failed:', error);
         return NextResponse.json(
           { error: 'Failed to fetch Texas data', sites: [], cached: false },
-          {
-            status: 500,
-          }
+          { status: 500 }
         );
       }
     }

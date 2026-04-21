@@ -1,38 +1,11 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import dynamic from 'next/dynamic';
-import { WaterSite } from '@/types/water';
-import { Waterway } from '@/services/waterways';
+import MapView from '@/components/MapView';
 import { useWaterData, BBox } from '@/hooks/useWaterData';
 import { TEXAS_BBOX } from '@/constants/texas';
 import CacheManager from './CacheManager';
 import DraggableBox from './DraggableBox';
-
-// Dynamically import MapView to avoid SSR issues with higher priority
-const DynamicMap = dynamic(() => import('../components/MapView'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-screen bg-blue-50">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-lg font-medium text-gray-700">Loading water data...</p>
-        <p className="mt-1 text-sm text-gray-500">Fetching latest gauge readings</p>
-      </div>
-    </div>
-  ),
-}) as React.ComponentType<{ 
-  sites: WaterSite[]; 
-  waterways: Waterway[];
-  globalTrendHours: number;
-  onTrendHoursChange: (hours: number) => void;
-  onVisibilityStatsChange?: (stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => void;
-  onMapBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
-  chartControlsVisible?: boolean;
-  floodPanelVisible?: boolean;
-  onChartControlsVisibilityChange?: (visible: boolean) => void;
-  onFloodPanelVisibilityChange?: (visible: boolean) => void;
-}>;
 
 export default function WaterMap() {
   const {
@@ -192,35 +165,29 @@ export default function WaterMap() {
     ]);
   }, [currentViewBounds, globalTrendHours, loadSitesForBounds, loadWaterwaysForBounds]);
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-blue-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-lg text-gray-700">Loading water level data...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-red-50">
-        <div className="text-center">
-          <p className="text-lg text-red-700">{error}</p>
-          <button 
-            onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 500 })}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-          >
-            Retry
-          </button>
-        </div>
-      </div>
-    );
-  }
+  // Non-blocking loading / error banners — the map and whatever data is
+  // already loaded keep rendering underneath so users see progress instead
+  // of a full-screen spinner.
+  const statusBanner = error ? (
+    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1100] bg-red-50 border border-red-200 text-red-700 text-sm px-3 py-1 rounded shadow">
+      {error}{' '}
+      <button
+        onClick={() => currentViewBounds && loadSitesForBounds(currentViewBounds, globalTrendHours, { maxSites: 500 })}
+        className="underline ml-2"
+      >
+        Retry
+      </button>
+    </div>
+  ) : loading && sites.length === 0 ? (
+    <div className="absolute top-16 left-1/2 -translate-x-1/2 z-[1100] bg-white border border-gray-200 text-gray-600 text-sm px-3 py-1 rounded shadow flex items-center gap-2">
+      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+      Loading gauges…
+    </div>
+  ) : null;
 
   return (
     <div className="h-screen w-full relative">
+      {statusBanner}
       {/* Header */}
       <div className="absolute top-0 left-0 right-0 z-[1000] bg-white shadow-md">
         <div className="flex items-center justify-between p-4">
@@ -409,9 +376,9 @@ export default function WaterMap() {
 
       {/* Map */}
       <div className="pt-16 h-full">
-        <DynamicMap 
-          sites={sites} 
-          waterways={waterways} 
+        <MapView
+          sites={sites}
+          waterways={waterways}
           globalTrendHours={globalTrendHours}
           onTrendHoursChange={handleTrendHoursChange}
           onVisibilityStatsChange={handleVisibilityStatsChange}

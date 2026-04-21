@@ -1,72 +1,37 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import ErrorBoundary from '@/components/ErrorBoundary';
 
-// Force these components to be client-side only
-const WaterMap = dynamic(() => import('@/components/WaterMap'), {
+// Single dynamic boundary. Previously this layer nested another `dynamic()`
+// import around each map, then WaterMap nested a third around MapView — so
+// every cold load had to download three chunk waterfalls and render three
+// loading spinners before anything appeared.
+const ResponsiveMap = dynamic(() => import('@/components/ResponsiveMap'), {
   ssr: false,
   loading: () => (
     <div className="flex items-center justify-center h-screen bg-blue-50">
       <div className="text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-4 text-lg font-medium text-gray-700">Loading Map...</p>
-      </div>
-    </div>
-  ),
-});
-
-const MobileWaterMap = dynamic(() => import('@/components/MobileWaterMap'), {
-  ssr: false,
-  loading: () => (
-    <div className="flex items-center justify-center h-screen bg-blue-50">
-      <div className="text-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
-        <p className="mt-2 text-sm text-gray-700">Loading mobile view...</p>
+        <p className="mt-4 text-lg font-medium text-gray-700">Loading map…</p>
       </div>
     </div>
   ),
 });
 
 export default function ClientSideApp() {
-  const [windowWidth, setWindowWidth] = useState(0);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-    
-    // Set initial width
-    if (typeof window !== 'undefined') {
-      setWindowWidth(window.innerWidth);
-      
-      // Add resize listener
-      const handleResize = () => setWindowWidth(window.innerWidth);
-      window.addEventListener('resize', handleResize);
-      return () => window.removeEventListener('resize', handleResize);
-    }
   }, []);
 
-  // Memoize mobile detection
-  const isMobile = useMemo(() => windowWidth < 768, [windowWidth]);
+  if (!mounted) return null;
 
-  // Don't render anything until we're mounted client-side
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center h-screen bg-blue-50">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-lg font-medium text-gray-700">Initializing Water Map...</p>
-          <p className="mt-2 text-sm text-gray-500">Setting up mapping components...</p>
-        </div>
-      </div>
-    );
-  }
-
-  // Render the appropriate component based on screen size
   return (
     <ErrorBoundary>
-      {isMobile ? <MobileWaterMap /> : <WaterMap />}
+      <ResponsiveMap />
     </ErrorBoundary>
   );
 }

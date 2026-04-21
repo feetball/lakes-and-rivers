@@ -3,7 +3,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import { createPortal } from 'react-dom';
-import dynamic from 'next/dynamic';
 import L from 'leaflet';
 import { WaterSite } from '@/types/water';
 import { Waterway, WaterwayOverlayMode } from '@/services/waterways';
@@ -204,7 +203,11 @@ const MapView: React.FC<MapViewProps> = ({
 }) => {
   const defaultCenter: [number, number] = [30.6327, -97.6769]; // Georgetown, TX
   const defaultZoom = 11;
-  const [sites, setSites] = useState<WaterSite[]>(initialSites);
+  // The parent (`WaterMap`) owns the USGS fetch. Treat `initialSites` as a
+  // live prop and forward it directly — the previous code copied it into
+  // local state and then ran a competing /api/usgs fetch that raced with the
+  // parent and frequently clobbered the site list with an empty array.
+  const sites = initialSites;
   const [visibleSites, setVisibleSites] = useState<WaterSite[]>(initialSites);
   const [chartsVisible, setChartsVisible] = useState(false);
   const [waterwaysVisible, setWaterwaysVisible] = useState(true);
@@ -216,34 +219,12 @@ const MapView: React.FC<MapViewProps> = ({
   const [isLocalNetwork, setIsLocalNetwork] = useState(false);
   const [cacheStats, setCacheStats] = useState<any>(null);
   const mapRef = useRef<any>(null);
+  const [mapReady, setMapReady] = useState(false);
   const boundsUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Periodically fetch latest gaugeSites from /api/usgs (Texas bounding box for cached data)
+  // Fix Leaflet icons on client side (once per mount).
   useEffect(() => {
-    // Fix Leaflet icons on client side
     fixLeafletIcons();
-    
-    let isMounted = true;
-    let interval: NodeJS.Timeout;
-    const fetchSites = async () => {
-      try {
-        // Use Texas bounding box to access cached data
-        const resp = await fetch('/api/usgs?north=36.5&south=25.8&east=-93.5&west=-106.7&hours=24');
-        if (!resp.ok) return;
-        const data = await resp.json();
-        if (data && Array.isArray(data.sites) && isMounted) {
-          setSites(data.sites);
-        }
-      } catch (err) {
-        // Optionally log error
-      }
-    };
-    fetchSites();
-    interval = setInterval(fetchSites, 60000); // 60s
-    return () => {
-      isMounted = false;
-      clearInterval(interval);
-    };
   }, []);
 
   // Check if user is on local network for cache management
@@ -386,7 +367,7 @@ const MapView: React.FC<MapViewProps> = ({
       map.off('moveend zoomend', immediateUpdate);
       map.off('move zoom', debouncedUpdate);
     };
-  }, [sites, gaugeSitesVisible, onVisibilityStatsChange, onMapBoundsChange]);
+  }, [sites, gaugeSitesVisible, onVisibilityStatsChange, onMapBoundsChange, mapReady]);
 
   // Update visibility stats when gauge sites visibility changes
   useEffect(() => {
@@ -449,14 +430,15 @@ const MapView: React.FC<MapViewProps> = ({
         scrollWheelZoom={true}
         attributionControl={true}
         whenReady={() => {
-          // Use Leaflet's global map instance from the ref
           if (mapRef.current) return;
-          // Find the map instance from the DOM
           const mapContainers = document.getElementsByClassName('leaflet-container');
           if (mapContainers.length > 0) {
             // @ts-ignore
             const map = mapContainers[0]._leaflet_map;
-            if (map) mapRef.current = map;
+            if (map) {
+              mapRef.current = map;
+              setMapReady(true);
+            }
           }
         }}
       >
