@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Popup, Tooltip, Polyline, useMap } from 'react-leaflet';
 import { createPortal } from 'react-dom';
 import L from 'leaflet';
 import { WaterSite } from '@/types/water';
@@ -11,7 +11,6 @@ import SiteTooltipContent from './map/SiteTooltip';
 import SitePopupContent from './map/SitePopup';
 import MapControls from './map/MapControls';
 import MapChartOverlay from './MapChartOverlay';
-import FloodAwareWaterwayLayer from './FloodAwareWaterwayLayer';
 import FloodPredictionPanel from './FloodPredictionPanel';
 
 // Import Leaflet CSS only on client side when component loads
@@ -189,7 +188,18 @@ const MapOverlayHandler: React.FC<{ sites: WaterSite[]; globalTrendHours: number
   );
 };
 
-const MapView: React.FC<MapViewProps> = ({ 
+// Small helper that reliably hands the Leaflet map instance back to the parent
+// via useMap(). Replaces a fragile `_leaflet_map` DOM-property hack that
+// didn't work in react-leaflet v4 and left viewport-based data loading dead.
+const MapRefBridge: React.FC<{ onReady: (map: L.Map) => void }> = ({ onReady }) => {
+  const map = useMap();
+  useEffect(() => {
+    onReady(map);
+  }, [map, onReady]);
+  return null;
+};
+
+const MapView: React.FC<MapViewProps> = ({
   sites: initialSites, 
   waterways, 
   globalTrendHours, 
@@ -384,17 +394,10 @@ const MapView: React.FC<MapViewProps> = ({
     if (!waterwaysVisible) return [];
 
     return waterways.filter((waterway) => {
-      if (waterway.type !== 'river' && waterway.type !== 'stream') {
-        return false;
-      }
-
-      if (waterwayOverlayMode === 'major') {
-        return waterway.detailLevel === 'statewide';
-      }
-
-      return waterway.detailLevel !== 'statewide';
+      if (waterway.type !== 'river' && waterway.type !== 'stream') return false;
+      return Array.isArray(waterway.coordinates) && waterway.coordinates.length > 1;
     });
-  }, [waterways, waterwaysVisible, waterwayOverlayMode]);
+  }, [waterways, waterwaysVisible]);
 
   return (
     <div className="relative h-full w-full">
@@ -429,31 +432,32 @@ const MapView: React.FC<MapViewProps> = ({
         className="z-0"
         scrollWheelZoom={true}
         attributionControl={true}
-        whenReady={() => {
-          if (mapRef.current) return;
-          const mapContainers = document.getElementsByClassName('leaflet-container');
-          if (mapContainers.length > 0) {
-            // @ts-ignore
-            const map = mapContainers[0]._leaflet_map;
-            if (map) {
-              mapRef.current = map;
-              setMapReady(true);
-            }
-          }
-        }}
       >
+        <MapRefBridge
+          onReady={(m) => {
+            if (mapRef.current) return;
+            mapRef.current = m;
+            setMapReady(true);
+          }}
+        />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={19}
           tileSize={256}
         />
-        <FloodAwareWaterwayLayer
-          waterways={renderedWaterways}
-          gaugeSites={sites}
-          enabled={floodAwarenessEnabled}
-        />
-        {gaugeSitesVisible && visibleSites.map((site) => (
+        {renderedWaterways.map((waterway) => (
+          <Polyline
+            key={waterway.id}
+            positions={waterway.coordinates}
+            pathOptions={{ color: '#2563eb', weight: 3, opacity: 0.9 }}
+          >
+            <Tooltip sticky>
+              <span>{waterway.name || waterway.type}</span>
+            </Tooltip>
+          </Polyline>
+        ))}
+        {gaugeSitesVisible && sites.map((site) => (
           <Marker
             key={site.id}
             position={[site.latitude, site.longitude]}
