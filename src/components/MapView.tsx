@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { MapContainer, TileLayer, Marker, Popup, Tooltip, useMap } from 'react-leaflet';
 import { createPortal } from 'react-dom';
 import dynamic from 'next/dynamic';
@@ -190,6 +190,16 @@ const MapOverlayHandler: React.FC<{ sites: WaterSite[]; globalTrendHours: number
   );
 };
 
+const MapInstanceBridge: React.FC<{ onMapReady: (map: L.Map) => void }> = ({ onMapReady }) => {
+  const map = useMap();
+
+  useEffect(() => {
+    onMapReady(map);
+  }, [map, onMapReady]);
+
+  return null;
+};
+
 const MapView: React.FC<MapViewProps> = ({ 
   sites: initialSites, 
   waterways, 
@@ -215,8 +225,14 @@ const MapView: React.FC<MapViewProps> = ({
   const [controlsPosition, setControlsPosition] = useState({ x: 0, y: 16 });
   const [isLocalNetwork, setIsLocalNetwork] = useState(false);
   const [cacheStats, setCacheStats] = useState<any>(null);
-  const mapRef = useRef<any>(null);
+  const mapRef = useRef<L.Map | null>(null);
+  const [mapInstance, setMapInstance] = useState<L.Map | null>(null);
   const boundsUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleMapReady = useCallback((map: L.Map) => {
+    mapRef.current = map;
+    setMapInstance(map);
+  }, []);
 
   // Periodically fetch latest gaugeSites from /api/usgs (Texas bounding box for cached data)
   useEffect(() => {
@@ -326,8 +342,8 @@ const MapView: React.FC<MapViewProps> = ({
   };
 
   useEffect(() => {
-    if (!mapRef.current) return;
-    const map = mapRef.current;
+    if (!mapInstance) return;
+    const map = mapInstance;
     
     const updateVisibleSitesAndBounds = () => {
       const bounds = map.getBounds();
@@ -386,7 +402,13 @@ const MapView: React.FC<MapViewProps> = ({
       map.off('moveend zoomend', immediateUpdate);
       map.off('move zoom', debouncedUpdate);
     };
-  }, [sites, gaugeSitesVisible, onVisibilityStatsChange, onMapBoundsChange]);
+  }, [mapInstance, sites, gaugeSitesVisible, onVisibilityStatsChange, onMapBoundsChange]);
+
+  useEffect(() => {
+    if (!mapInstance) {
+      setVisibleSites(sites);
+    }
+  }, [sites, mapInstance]);
 
   // Update visibility stats when gauge sites visibility changes
   useEffect(() => {
@@ -441,25 +463,15 @@ const MapView: React.FC<MapViewProps> = ({
         />
       )}
       
-      <MapContainer
+        <MapContainer
         center={defaultCenter}
         zoom={defaultZoom}
         style={{ height: '100%', width: '100%' }}
         className="z-0"
         scrollWheelZoom={true}
         attributionControl={true}
-        whenReady={() => {
-          // Use Leaflet's global map instance from the ref
-          if (mapRef.current) return;
-          // Find the map instance from the DOM
-          const mapContainers = document.getElementsByClassName('leaflet-container');
-          if (mapContainers.length > 0) {
-            // @ts-ignore
-            const map = mapContainers[0]._leaflet_map;
-            if (map) mapRef.current = map;
-          }
-        }}
-      >
+       >
+        <MapInstanceBridge onMapReady={handleMapReady} />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
