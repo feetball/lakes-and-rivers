@@ -1,3 +1,6 @@
+import { promises as fs } from 'fs';
+import path from 'path';
+import { gunzipSync } from 'zlib';
 // Texas bounding box for filtering
 const TEXAS_BBOX = { north: 36.5, south: 25.8, east: -93.5, west: -106.7 };
 
@@ -52,12 +55,69 @@ import { validateHours } from '@/lib/security';
 import { logger } from '@/lib/logger';
 
 const USGS_BASE_URL = 'https://waterservices.usgs.gov/nwis/iv/';
+const STATIC_USGS_GZ_PATH = path.join(process.cwd(), 'data', 'static', 'texas-usgs-stations.json.gz');
+const STATIC_USGS_JSON_PATH = path.join(process.cwd(), 'data', 'static', 'texas-usgs-stations.json');
 
 // Control whether to allow live USGS API fetching (default: false - Redis only)
 const ALLOW_LIVE_USGS_FETCH = process.env.ALLOW_LIVE_USGS_FETCH === 'true';
 
+type UsgsSite = {
+  latitude: number;
+  longitude: number;
+  [key: string]: unknown;
+};
+
+const staticSitesByHours = new Map<number, UsgsSite[]>();
+
 // Make this route dynamic to avoid build-time static generation
 export const dynamic = 'force-dynamic';
+
+function isSiteWithinBbox(
+  site: { latitude?: number; longitude?: number },
+  bbox: { north: number; south: number; east: number; west: number }
+): boolean {
+  if (!Number.isFinite(site.latitude) || !Number.isFinite(site.longitude)) return false;
+  return (
+    site.latitude! >= bbox.south &&
+    site.latitude! <= bbox.north &&
+    site.longitude! >= bbox.west &&
+    site.longitude! <= bbox.east
+  );
+}
+
+async function loadStaticTexasSites(hours: number): Promise<UsgsSite[]> {
+  if (staticSitesByHours.has(hours)) {
+    return staticSitesByHours.get(hours) || [];
+  }
+
+  try {
+    let rawData: unknown;
+    try {
+      const compressed = await fs.readFile(STATIC_USGS_GZ_PATH);
+      rawData = JSON.parse(gunzipSync(compressed).toString('utf8'));
+    } catch {
+      const json = await fs.readFile(STATIC_USGS_JSON_PATH, 'utf8');
+      rawData = JSON.parse(json);
+    }
+
+    const processed = processUSGSResponse(rawData, hours) as UsgsSite[];
+    staticSitesByHours.set(hours, processed);
+    logger.debug(`Loaded ${processed.length} static USGS sites for ${hours}h fallback`);
+    return processed;
+  } catch (error) {
+    logger.warn('Static USGS fallback unavailable:', error);
+    staticSitesByHours.set(hours, []);
+    return [];
+  }
+}
+
+async function getStaticFallbackSites(
+  hours: number,
+  bbox: { north: number; south: number; east: number; west: number }
+): Promise<UsgsSite[]> {
+  const sites = await loadStaticTexasSites(hours);
+  return sites.filter((site) => isSiteWithinBbox(site, bbox));
+}
 
 // Utility functions for grid-based fetching
 function clamp(val: number, min: number, max: number): number {
@@ -350,17 +410,16 @@ export async function GET(request: NextRequest) {
       
       // No Texas cache available, check if live fetching is allowed
       if (!ALLOW_LIVE_USGS_FETCH) {
-        logger.debug('No Texas cache available and live fetching disabled');
-        return NextResponse.json(
-          {
-            error: 'No cached Texas data available and live USGS API fetching is disabled',
-            sites: [],
-            cached: false
-          },
-          {
-            status: 200,
-          }
-        );
+        logger.debug('No Texas cache available and live fetching disabled - trying static fallback');
+        const staticSites = await getStaticFallbackSites(hours, activeBbox);
+        if (staticSites.length > 0) {
+          return NextResponse.json({ sites: staticSites, cached: true, source: 'static' });
+        }
+        return NextResponse.json({
+          error: 'No cached Texas data available and static fallback data is unavailable',
+          sites: [],
+          cached: false
+        }, { status: 200 });
       }
       
       // Use grid-based approach for Texas
@@ -511,17 +570,16 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({ ...cachedData, cached: true });
       } else {
         recordCacheStat('usgs', false);
-        logger.debug('No cached data available and live fetching disabled');
-        return NextResponse.json(
-          {
-            error: 'No cached data available and live USGS API fetching is disabled',
-            sites: [],
-            cached: false
-          },
-          {
-            status: 200,
-          }
-        );
+        logger.debug('No cached data available and live fetching disabled - trying static fallback');
+        const staticSites = await getStaticFallbackSites(hours, activeBbox);
+        if (staticSites.length > 0) {
+          return NextResponse.json({ sites: staticSites, cached: true, source: 'static' });
+        }
+        return NextResponse.json({
+          error: 'No cached data available and static fallback data is unavailable',
+          sites: [],
+          cached: false
+        }, { status: 200 });
       }
     }
 
