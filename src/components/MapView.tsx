@@ -45,6 +45,73 @@ interface MapViewProps {
   onFloodPanelVisibilityChange?: (visible: boolean) => void;
 }
 
+interface MapBoundsSyncProps {
+  sites: WaterSite[];
+  gaugeSitesVisible: boolean;
+  onVisibleSitesChange: (sites: WaterSite[]) => void;
+  onVisibilityStatsChange?: (stats: { totalSites: number; visibleSites: number; gaugeSitesVisible: boolean }) => void;
+  onMapBoundsChange?: (bounds: { north: number; south: number; east: number; west: number }) => void;
+}
+
+/**
+ * Child of MapContainer — uses react-leaflet's `useMap` hook so it is
+ * guaranteed to receive the real Leaflet map instance. Replaces the old
+ * `mapRef = container._leaflet_map` trick which never actually ran because
+ * Leaflet doesn't expose the map on that property.
+ */
+const MapBoundsSync: React.FC<MapBoundsSyncProps> = ({
+  sites,
+  gaugeSitesVisible,
+  onVisibleSitesChange,
+  onVisibilityStatsChange,
+  onMapBoundsChange,
+}) => {
+  const map = useMap();
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    const update = () => {
+      const bounds = map.getBounds();
+      const list = Array.isArray(sites) ? sites : [];
+      const filtered = list.filter(
+        (site) =>
+          site.latitude >= bounds.getSouth() &&
+          site.latitude <= bounds.getNorth() &&
+          site.longitude >= bounds.getWest() &&
+          site.longitude <= bounds.getEast()
+      );
+      onVisibleSitesChange(filtered);
+      onVisibilityStatsChange?.({
+        totalSites: list.length,
+        visibleSites: filtered.length,
+        gaugeSitesVisible,
+      });
+      onMapBoundsChange?.({
+        north: bounds.getNorth(),
+        south: bounds.getSouth(),
+        east: bounds.getEast(),
+        west: bounds.getWest(),
+      });
+    };
+
+    const debounced = () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(update, 100);
+    };
+
+    update();
+    map.on('moveend zoomend resize', update);
+    map.on('move zoom', debounced);
+    return () => {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      map.off('moveend zoomend resize', update);
+      map.off('move zoom', debounced);
+    };
+  }, [map, sites, gaugeSitesVisible, onVisibleSitesChange, onVisibilityStatsChange, onMapBoundsChange]);
+
+  return null;
+};
+
 // Component to handle map events and overlay positioning
 const MapOverlayHandler: React.FC<{ sites: WaterSite[]; globalTrendHours: number; chartsVisible: boolean }> = ({ sites, globalTrendHours, chartsVisible }) => {
   const map = useMap();
@@ -218,9 +285,9 @@ const MapView: React.FC<MapViewProps> = ({
   const [controlsPosition, setControlsPosition] = useState({ x: 0, y: 16 });
   const [isLocalNetwork, setIsLocalNetwork] = useState(false);
   const [cacheStats, setCacheStats] = useState<any>(null);
-  const mapRef = useRef<any>(null);
-  const [mapReady, setMapReady] = useState(false);
-  const boundsUpdateTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const handleVisibleSitesChange = React.useCallback((next: WaterSite[]) => {
+    setVisibleSites(next);
+  }, []);
 
   // Fix Leaflet icons on client side (once per mount).
   useEffect(() => {
@@ -294,81 +361,6 @@ const MapView: React.FC<MapViewProps> = ({
     return () => window.removeEventListener('resize', checkMobile);
   }, []);
 
-  // Helper: check if a site is within bounds
-  const isSiteInBounds = (site: WaterSite, bounds: any) => {
-    const lat = site.latitude;
-    const lng = site.longitude;
-    return (
-      lat >= bounds.getSouth() &&
-      lat <= bounds.getNorth() &&
-      lng >= bounds.getWest() &&
-      lng <= bounds.getEast()
-    );
-  };
-
-  useEffect(() => {
-    if (!mapRef.current) return;
-    const map = mapRef.current;
-    
-    const updateVisibleSitesAndBounds = () => {
-      const bounds = map.getBounds();
-      const filteredSites = (Array.isArray(sites) ? sites : []).filter(site =>
-        isSiteInBounds(site, bounds)
-      );
-      
-      console.log(`Total sites: ${sites.length}, Visible: ${filteredSites.length}`);
-      setVisibleSites(filteredSites);
-      
-      // Update visibility stats
-      if (onVisibilityStatsChange) {
-        onVisibilityStatsChange({
-          totalSites: sites.length,
-          visibleSites: filteredSites.length,
-          gaugeSitesVisible
-        });
-      }
-      
-      // Notify parent component about bounds change for dynamic data loading
-      if (onMapBoundsChange) {
-        const boundsObj = {
-          north: bounds.getNorth(),
-          south: bounds.getSouth(),
-          east: bounds.getEast(),
-          west: bounds.getWest()
-        };
-        onMapBoundsChange(boundsObj);
-      }
-    };
-    
-    // Add debounced update for more responsive bounds checking
-    const debouncedUpdate = () => {
-      if (boundsUpdateTimeoutRef.current) {
-        clearTimeout(boundsUpdateTimeoutRef.current);
-      }
-      boundsUpdateTimeoutRef.current = setTimeout(updateVisibleSitesAndBounds, 100); // 100ms debounce
-    };
-    
-    const immediateUpdate = () => {
-      if (boundsUpdateTimeoutRef.current) {
-        clearTimeout(boundsUpdateTimeoutRef.current);
-      }
-      updateVisibleSitesAndBounds();
-    };
-    
-    // Use immediate update for end events, debounced for move events
-    map.on('moveend zoomend', immediateUpdate);
-    map.on('move zoom', debouncedUpdate);
-    updateVisibleSitesAndBounds();
-    
-    return () => {
-      if (boundsUpdateTimeoutRef.current) {
-        clearTimeout(boundsUpdateTimeoutRef.current);
-      }
-      map.off('moveend zoomend', immediateUpdate);
-      map.off('move zoom', debouncedUpdate);
-    };
-  }, [sites, gaugeSitesVisible, onVisibilityStatsChange, onMapBoundsChange, mapReady]);
-
   // Update visibility stats when gauge sites visibility changes
   useEffect(() => {
     if (onVisibilityStatsChange) {
@@ -429,19 +421,14 @@ const MapView: React.FC<MapViewProps> = ({
         className="z-0"
         scrollWheelZoom={true}
         attributionControl={true}
-        whenReady={() => {
-          if (mapRef.current) return;
-          const mapContainers = document.getElementsByClassName('leaflet-container');
-          if (mapContainers.length > 0) {
-            // @ts-ignore
-            const map = mapContainers[0]._leaflet_map;
-            if (map) {
-              mapRef.current = map;
-              setMapReady(true);
-            }
-          }
-        }}
       >
+        <MapBoundsSync
+          sites={sites}
+          gaugeSitesVisible={gaugeSitesVisible}
+          onVisibleSitesChange={handleVisibleSitesChange}
+          onVisibilityStatsChange={onVisibilityStatsChange}
+          onMapBoundsChange={onMapBoundsChange}
+        />
         <TileLayer
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
